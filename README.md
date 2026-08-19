@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/logo.svg" width="130" alt="Keeyo logo">
+<img src="public/favicon.svg" width="130" alt="Keeyo logo">
 
 # Keeyo
 
