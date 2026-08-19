@@ -67,8 +67,11 @@ function sanitizeCredential(body) {
   if (id.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
   if (publicKey.length > 4000 || !/^[A-Za-z0-9+/=]+$/.test(publicKey)) return null;
   if (![-7, -257, -8].includes(alg)) return null;
-  return { id, publicKeyPem: spkiToPem(publicKey), alg };
+  return { id, publicKeyPem: spkiToPem(publicKey), alg, prfEnabled: c.prfEnabled ? 1 : 0 };
 }
+
+// Client-side-encrypted note envelope: enc:v1:<salt>:<iv>:<ciphertext> (base64url).
+const ENC_RE = /^enc:v1:[A-Za-z0-9_-]{16,88}:[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{8,1400}$/;
 
 function spkiToPem(b64) {
   return `-----BEGIN PUBLIC KEY-----\n${b64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----\n`;
@@ -137,11 +140,18 @@ function consumeChallenge(token, kind) {
 }
 
 // Returns the new secret value, or undefined for "leave unchanged".
+// Accepts either a plaintext note (legacy / non-PRF pairings) or an
+// end-to-end-encrypted envelope produced in the browser.
 function secretUpdate(body) {
   if (body.clearSecret === true) return '';
   if (typeof body.secret === 'string' && body.secret.trim() !== '') {
-    if (body.secret.length > 500) throw new ApiError(400, 'Secret note is too long');
-    return body.secret.trim();
+    const s = body.secret.trim();
+    if (s.startsWith('enc:')) {
+      if (!ENC_RE.test(s)) throw new ApiError(400, 'Malformed encrypted note');
+      return s;
+    }
+    if (s.length > 500) throw new ApiError(400, 'Secret note is too long');
+    return s;
   }
   return undefined;
 }
@@ -196,8 +206,9 @@ function intId(value) {
 
 const KEY_COLS = `id, name, vendor, model, serial, color,
   form_factor AS formFactor, status, purchased_at AS purchasedAt, notes, image,
-  credential_id AS credentialId, verified_at AS verifiedAt,
+  credential_id AS credentialId, verified_at AS verifiedAt, prf_enabled AS prfEnabled,
   CASE WHEN secret != '' THEN 1 ELSE 0 END AS hasSecret,
+  CASE WHEN secret LIKE 'enc:v1:%' THEN 1 ELSE 0 END AS secretEncrypted,
   created_at AS createdAt`;
 
 // Append-only per-key logbook (capped at 200 entries per key).
@@ -476,10 +487,10 @@ router.post('/keys', (req, res) => {
   const secret = secretUpdate(body);
   const info = db.prepare(`
     INSERT INTO keys (user_id, name, vendor, model, serial, color, form_factor, status, purchased_at, notes,
-      image, credential_id, public_key, credential_alg, secret)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      image, credential_id, public_key, credential_alg, secret, prf_enabled)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(req.user.id, k.name, k.vendor, k.model, k.serial, k.color, k.formFactor, k.status, k.purchasedAt, k.notes,
-    k.image, cred ? cred.id : '', cred ? cred.publicKeyPem : '', cred ? cred.alg : -7, secret || '');
+    k.image, cred ? cred.id : '', cred ? cred.publicKeyPem : '', cred ? cred.alg : -7, secret || '', cred ? cred.prfEnabled : 0);
   const newId = Number(info.lastInsertRowid);
   logEvent(req.user.id, newId, 'created', `Registered — ${[k.vendor, k.model].filter(Boolean).join(' ') || 'unknown model'}${cred ? ' (paired)' : ''}`);
   if (secret) logEvent(req.user.id, newId, 'secret-set', 'Secret note stored');
@@ -506,9 +517,9 @@ router.put('/keys/:id', (req, res) => {
     if (row.secret && row.credential_id && row.credential_id !== cred.id && secret === undefined) {
       throw new ApiError(403, 'This key holds a secret note bound to its current pairing — clear or replace the note to re-pair');
     }
-    db.prepare('UPDATE keys SET credential_id = ?, public_key = ?, credential_alg = ? WHERE user_id = ? AND id = ?')
-      .run(cred.id, cred.publicKeyPem, cred.alg, req.user.id, id);
-    if (cred.id !== before.credentialId) logEvent(req.user.id, id, 'paired', 'Paired with the physical key');
+    db.prepare('UPDATE keys SET credential_id = ?, public_key = ?, credential_alg = ?, prf_enabled = ? WHERE user_id = ? AND id = ?')
+      .run(cred.id, cred.publicKeyPem, cred.alg, cred.prfEnabled, req.user.id, id);
+    if (cred.id !== before.credentialId) logEvent(req.user.id, id, 'paired', `Paired with the physical key${cred.prfEnabled ? ' (encryption-capable)' : ''}`);
   }
   if (secret !== undefined) {
     db.prepare('UPDATE keys SET secret = ? WHERE user_id = ? AND id = ?').run(secret, req.user.id, id);
@@ -543,7 +554,14 @@ router.post('/keys/:id/reveal-challenge', (req, res) => {
   if (!key) throw new ApiError(404, 'Key not found');
   if (!key.credential_id) throw new ApiError(400, 'This key was not paired by scanning — no possession proof is available');
   if (!key.secret) throw new ApiError(400, 'No secret note is stored on this key');
-  res.json(issueChallenge('reveal', { userId: req.user.id, keyId: id }));
+  // Encrypted notes need the PRF salt during the assertion, so hand it out
+  // with the challenge (the salt is not secret).
+  let prfSalt = null;
+  if (key.secret.startsWith('enc:v1:')) {
+    const parts = key.secret.split(':');
+    if (parts.length === 5) prfSalt = parts[2];
+  }
+  res.json({ ...issueChallenge('reveal', { userId: req.user.id, keyId: id }), encrypted: !!prfSalt, prfSalt });
 });
 
 router.post('/keys/:id/reveal', (req, res) => {
@@ -750,17 +768,20 @@ router.post('/import', (req, res) => {
     const keyIds = new Map();
     for (const raw of data.keys) {
       const k = sanitizeKey(raw);
-      const secret = typeof raw.secret === 'string' ? raw.secret.slice(0, 500) : '';
+      let secret = '';
+      if (typeof raw.secret === 'string') {
+        secret = raw.secret.startsWith('enc:') ? (ENC_RE.test(raw.secret) ? raw.secret : '') : raw.secret.slice(0, 500);
+      }
       const credId = typeof raw.credentialId === 'string' && /^[A-Za-z0-9_-]{0,1024}$/.test(raw.credentialId) ? raw.credentialId : '';
       const pem = typeof raw.publicKeyPem === 'string' && raw.publicKeyPem.startsWith('-----BEGIN PUBLIC KEY-----') && raw.publicKeyPem.length < 4200 ? raw.publicKeyPem : '';
       const alg = [-7, -257, -8].includes(Number(raw.credentialAlg)) ? Number(raw.credentialAlg) : -7;
       const verifiedAt = typeof raw.verifiedAt === 'string' ? raw.verifiedAt.slice(0, 40) : '';
       const info = db.prepare(`
         INSERT INTO keys (user_id, name, vendor, model, serial, color, form_factor, status, purchased_at, notes,
-          image, credential_id, public_key, credential_alg, secret, verified_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          image, credential_id, public_key, credential_alg, secret, verified_at, prf_enabled)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(uid, k.name, k.vendor, k.model, k.serial, k.color, k.formFactor, k.status, k.purchasedAt, k.notes,
-        k.image, credId, credId ? pem : '', alg, secret, verifiedAt);
+        k.image, credId, credId ? pem : '', alg, secret, verifiedAt, raw.prfEnabled ? 1 : 0);
       const newId = Number(info.lastInsertRowid);
       logEvent(uid, newId, 'created', 'Restored from backup import');
       keyIds.set(raw.id, newId);

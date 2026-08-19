@@ -68,7 +68,7 @@ volumes:
 - **Track what goes where** — every passkey, 2FA registration and TOTP per key, plus the reverse lookup per service.
 - **Backup warnings** — services relying on a single key get flagged, and the warning is a button that registers a backup in two clicks.
 - **Lost-key checklist** — mark a key lost and get a revocation checklist of every service that still trusts it.
-- **Tap-to-reveal secret notes** — store a key's PIN so it's revealed only by physically tapping that exact key (verified server-side).
+- **Tap-to-reveal secret notes** — store a key's PIN so it's revealed only by physically tapping that exact key (verified server-side). On PRF-capable keys the note is **end-to-end encrypted** with a key derived from the hardware itself — the server stores ciphertext only.
 - **Sign-in 2FA** — protect Keeyo itself with a hardware key on top of your password.
 - **Health check-ins & logbook** — "tested" stamps with 6-month staleness nudges, and an append-only per-key history.
 - **Print it** — physical asset tags (barcode + QR) and a full printable register sheet; CSV export too.

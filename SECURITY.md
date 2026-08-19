@@ -30,7 +30,7 @@ The following are not considered vulnerabilities:
 
 * Actions that require an Administrator account or high-trust roles (e.g., "An admin can delete the database").
 * Issues caused by reverse proxies, third-party deployment tools, or intentionally unsafe configurations.
-* Anything requiring access to the server host or the `/data` volume. In particular, secret notes are **documented** as stored unencrypted in the SQLite file and included in JSON exports — protecting the host and your backups is the deployer's job.
+* Anything requiring access to the server host or the `/data` volume. In particular, secret notes on **non-PRF pairings** are documented as stored unencrypted in the SQLite file and included in JSON exports — protecting the host and your backups is the deployer's job. (Notes on PRF-capable pairings are end-to-end encrypted; breaking *that* without the physical key **is** in scope.)
 * The `KEEYO_DISABLE_MFA` and `TRUST_PROXY` environment variables behaving as documented — they are deliberate operator escape hatches and require server access to set.
 * The FIDO metadata (MDS) blob's JWT signature not being verified — it is only used to display device names, never for security decisions.
 * Running Keeyo over plain HTTP on an untrusted network. TLS termination is explicitly delegated to your reverse proxy.

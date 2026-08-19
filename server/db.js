@@ -131,6 +131,7 @@ ensureColumn('keys', 'credential_alg', 'credential_alg INTEGER NOT NULL DEFAULT 
 ensureColumn('keys', 'secret', "secret TEXT NOT NULL DEFAULT ''");
 ensureColumn('registrations', 'revoked', 'revoked INTEGER NOT NULL DEFAULT 0');
 ensureColumn('keys', 'verified_at', "verified_at TEXT NOT NULL DEFAULT ''");
+ensureColumn('keys', 'prf_enabled', 'prf_enabled INTEGER NOT NULL DEFAULT 0');
 
 /** Run fn inside a transaction; rolls back on throw. */
 function tx(fn) {

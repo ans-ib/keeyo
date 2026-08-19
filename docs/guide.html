@@ -53,8 +53,9 @@
   <p>The identify button on the dashboard answers the question the whole app exists for. Plug in the mystery key, touch it, and Keeyo names the exact record — even several keys plugged in at once is fine, because <b>the key you physically touch is the one that answers</b>. Works for paired keys; unpaired ones fall back to a model read with candidate matches.</p>
 
   <h2>Secret notes (tap to reveal)</h2>
-  <p>A paired key can hold one secret note — typically its PIN. The note is never shown in the app; revealing it requires tapping that exact physical key, and the server verifies the cryptographic response before releasing it. Setting or replacing the note is a normal edit; only <i>reading</i> it needs the key.</p>
-  <div class="note"><span>⚠</span><span>The note is stored unencrypted in the server's database file — the tap protects the API, not the disk. Don't store anything you can't afford to have on your own server.</span></div>
+  <p>A paired key can hold one secret note — typically its PIN. The note is never shown in the app; revealing it requires tapping that exact physical key, and the server verifies the cryptographic response before releasing it.</p>
+  <p>On modern keys (anything supporting the WebAuthn PRF extension — YubiKey 5 series included), the note is also <b>end-to-end encrypted</b>: your browser derives the encryption key from the hardware itself, so the server only ever stores ciphertext. Saving asks for one extra tap; revealing doesn't — the same tap proves possession and unlocks the note. The key page labels every note <i>E2E encrypted</i> or <i>server-stored</i> so you always know which mode you're in; re-pairing an old key upgrades it.</p>
+  <div class="note"><span>⚠</span><span>Notes on pairings without PRF support are stored unencrypted in the server's database file — the tap protects the API, not the disk. The label tells you; don't store anything you can't afford to have on your own server.</span></div>
 
   <h2>Health check-ins</h2>
   <p>Backup keys rot in drawers. Whenever you actually use or test a key, press <b>Tested</b> on its page — the dashboard nudges you about any active or backup key that hasn't been confirmed working in six months.</p>

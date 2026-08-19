@@ -47,11 +47,13 @@
 
   <h2>Tap-to-reveal secret notes</h2>
   <p>When a key is scanned, Keeyo keeps the public half of a throwaway WebAuthn credential as a <i>pairing</i>. Revealing the key's secret note runs a challenge–response against that pairing: single-use challenge, and the server verifies origin, RP ID, user presence and the signature before releasing the note. Swapping a key's pairing while a note exists is refused — the note must be cleared or replaced first, so a hijacked session can destroy the note but never read it.</p>
+  <h3>End-to-end encryption (PRF)</h3>
+  <p>If the authenticator supports the WebAuthn <b>PRF extension</b> (hmac-secret — YubiKey 5 series and most modern FIDO2 keys do), notes go further: they are encrypted <i>in your browser</i> with an AES-256-GCM key derived (HKDF-SHA256) from a secret only that physical key can reproduce. The server stores ciphertext only — a stolen database, a leaked JSON export, even a malicious server admin gets nothing without the physical key in hand. Saving such a note costs one extra tap (deriving the key); revealing costs none, because the possession-proof tap doubles as the decryption ceremony. Pairings made before PRF support store notes server-side in plaintext — the key page labels each note honestly (<i>E2E encrypted</i> vs <i>server-stored</i>), and re-pairing upgrades it.</p>
 
   <h2>Honest limitations</h2>
   <div class="note danger"><span>⚠</span><span><b>Read these before trusting Keeyo with anything.</b></span></div>
   <ul>
-    <li>Secret notes are stored <b>unencrypted</b> in the SQLite file, and JSON exports include them. The possession check protects the API — the host and your backups are yours to protect.</li>
+    <li>Secret notes on <b>non-PRF pairings</b> are stored unencrypted in the SQLite file and JSON exports. PRF-capable pairings store ciphertext only — check the note's label on the key page.</li>
     <li>TLS is delegated to your reverse proxy. Over plain HTTP on a LAN, session cookies travel unencrypted and all WebAuthn features disable themselves.</li>
     <li>The FIDO metadata blob's JWT signature is not verified — it only supplies display names, never security decisions.</li>
     <li><code>KEEYO_DISABLE_MFA</code> and the password-reset script are deliberate escape hatches: anyone with shell access to your server owns your Keeyo. That's the nature of self-hosting.</li>

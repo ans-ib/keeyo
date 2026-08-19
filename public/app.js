@@ -291,6 +291,7 @@ async function detectKey(signal) {
       userVerification: 'discouraged',
     },
     attestation: 'direct',
+    extensions: { prf: {} },
     timeout: 60000,
   };
   const cred = await navigator.credentials.create({ publicKey, signal });
@@ -307,42 +308,100 @@ async function detectKey(signal) {
   const transports = typeof resp.getTransports === 'function' ? resp.getTransports() : [];
   // Keep the throwaway credential's public half: it lets Keeyo later prove
   // "this exact physical key is present" before revealing a stored secret.
+  // If the authenticator supports the PRF extension, secret notes for this
+  // key can be end-to-end encrypted with a key only the hardware can derive.
   let credential = null;
   try {
     const spki = typeof resp.getPublicKey === 'function' ? resp.getPublicKey() : null;
     if (spki) {
+      let prfEnabled = false;
+      try { prfEnabled = cred.getClientExtensionResults().prf?.enabled === true; } catch { /* no PRF */ }
       credential = {
         id: cred.id,
         publicKey: bufToB64(spki),
         alg: typeof resp.getPublicKeyAlgorithm === 'function' ? resp.getPublicKeyAlgorithm() : -7,
+        prfEnabled,
       };
     }
   } catch { /* possession pairing unavailable — detection still works */ }
   return { aaguid, transports, credential };
 }
 
-// Prove possession of the paired physical key, then fetch the stored secret.
-async function revealSecret(key) {
-  const { token, challenge } = await api(`/keys/${key.id}/reveal-challenge`, { method: 'POST', body: {} });
+/* ---------- end-to-end encrypted notes (WebAuthn PRF) ---------- */
+
+const isEncryptedNote = (s) => typeof s === 'string' && s.startsWith('enc:v1:');
+
+async function deriveNoteKey(prfOutput, saltBytes) {
+  const hkdf = await crypto.subtle.importKey('raw', prfOutput, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: saltBytes, info: new TextEncoder().encode('keeyo-secret-note-v1') },
+    hkdf,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+async function encryptNote(plaintext, prfOutput, saltBytes) {
+  const key = await deriveNoteKey(prfOutput, saltBytes);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext)));
+  return `enc:v1:${bufToB64url(saltBytes)}:${bufToB64url(iv)}:${bufToB64url(ct)}`;
+}
+
+async function decryptNote(envelope, prfOutput) {
+  const parts = envelope.split(':');
+  const key = await deriveNoteKey(prfOutput, b64urlToBuf(parts[2]));
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64urlToBuf(parts[3]) }, key, b64urlToBuf(parts[4]));
+  return new TextDecoder().decode(plain);
+}
+
+// Tap the key to derive the note-encryption secret (used when SETTING a note;
+// no server involvement — the assertion never leaves the browser).
+async function derivePrfForKey(credentialId, saltBytes) {
   const assertion = await navigator.credentials.get({
     publicKey: {
-      challenge: b64urlToBuf(challenge),
-      allowCredentials: [{ type: 'public-key', id: b64urlToBuf(key.credentialId) }],
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: 'public-key', id: b64urlToBuf(credentialId) }],
       userVerification: 'discouraged',
+      extensions: { prf: { eval: { first: saltBytes } } },
       timeout: 60000,
     },
   });
+  const out = assertion.getClientExtensionResults().prf?.results?.first;
+  if (!out) throw new Error('This key or browser could not derive the encryption secret (PRF)');
+  return new Uint8Array(out);
+}
+
+// Prove possession of the paired physical key, then fetch the stored secret.
+// For encrypted notes the very same tap also derives the decryption key via
+// the PRF extension — the server only ever sees ciphertext.
+async function revealSecret(key) {
+  const ch = await api(`/keys/${key.id}/reveal-challenge`, { method: 'POST', body: {} });
+  const publicKey = {
+    challenge: b64urlToBuf(ch.challenge),
+    allowCredentials: [{ type: 'public-key', id: b64urlToBuf(key.credentialId) }],
+    userVerification: 'discouraged',
+    timeout: 60000,
+  };
+  if (ch.prfSalt) publicKey.extensions = { prf: { eval: { first: b64urlToBuf(ch.prfSalt) } } };
+  const assertion = await navigator.credentials.get({ publicKey });
   const r = assertion.response;
   const out = await api(`/keys/${key.id}/reveal`, {
     method: 'POST',
     body: {
-      token,
+      token: ch.token,
       credentialId: assertion.id,
       clientDataJSON: bufToB64url(r.clientDataJSON),
       authenticatorData: bufToB64url(r.authenticatorData),
       signature: bufToB64url(r.signature),
     },
   });
+  if (isEncryptedNote(out.secret)) {
+    const prfOut = assertion.getClientExtensionResults().prf?.results?.first;
+    if (!prfOut) throw new Error('The browser could not derive the decryption secret from this key');
+    return decryptNote(out.secret, new Uint8Array(prfOut));
+  }
   return out.secret;
 }
 
@@ -1242,6 +1301,9 @@ function viewKeyDetail(key) {
         ${key.hasSecret && key.credentialId ? `
         <div class="secret-row">
           ${I.lock}<span>Secret note</span>
+          ${key.secretEncrypted
+            ? '<span class="chip ok" title="Encrypted in your browser with a key only this hardware can derive — the server stores ciphertext only">E2E encrypted</span>'
+            : '<span class="chip warn" title="Stored unencrypted on the server — re-pair the key and re-save the note to upgrade">server-stored</span>'}
           <button class="btn btn-sm" id="reveal-btn">Tap key to reveal</button>
           <code class="secret-value" id="secret-value" style="display:none"></code>
         </div>` : ''}
@@ -2146,7 +2208,7 @@ function keyModal(existing = null) {
         <input type="password" name="secretInput" autocomplete="off" maxlength="200"
           placeholder="${existing && existing.hasSecret ? 'Currently set — type to replace' : 'e.g. this key’s PIN'}">
         ${existing && existing.hasSecret ? '<label class="check-line"><input type="checkbox" name="clearSecret"> Clear the stored note</label>' : ''}
-        <div class="hint">Never shown in the app — revealed only after tapping this exact physical key.</div>`;
+        <div class="hint" id="secret-mode-hint">Never shown in the app — revealed only after tapping this exact physical key.</div>`;
 
   let secretField;
   if (existing && !existing.credentialId) {
@@ -2159,7 +2221,15 @@ function keyModal(existing = null) {
       </div>
       <div class="field" id="secret-field" style="display:none">${secretInputHTML}</div>`;
   } else {
+    // Paired before PRF support and holding no note yet? Offer an upgrade.
+    const upgrade = existing && existing.credentialId && !existing.prfEnabled && !existing.hasSecret;
     secretField = `
+      ${upgrade ? `
+      <div class="field" id="pair-field">
+        <label>Encryption upgrade</label>
+        <button type="button" class="btn btn-sm" id="pair-btn">${I.scan} Re-pair to enable encrypted notes</button>
+        <div class="hint">This pairing predates PRF support — one re-scan upgrades secret notes to end-to-end encryption.</div>
+      </div>` : ''}
       <div class="field" id="secret-field" style="${existing ? '' : 'display:none'}">${secretInputHTML}</div>`;
   }
 
@@ -2290,7 +2360,19 @@ function keyModal(existing = null) {
       const manualBtn = $('#manual-btn', form);
       if (manualBtn) manualBtn.addEventListener('click', () => showStep('form'));
 
-      // Edit-mode pairing for keys that never went through the scan step.
+      // Keep the secret-note hint honest about the storage mode.
+      function updateSecretHint() {
+        const hint = $('#secret-mode-hint', form);
+        if (!hint) return;
+        const prfCapable = credential ? credential.prfEnabled : !!(existing && existing.prfEnabled);
+        hint.textContent = prfCapable
+          ? 'End-to-end encrypted with this key — even the server database cannot read it. Saving asks for one extra tap.'
+          : 'Never shown in the app — revealed only after tapping this exact physical key. Stored on the server unencrypted.';
+      }
+      updateSecretHint();
+
+      // Edit-mode pairing for keys that never went through the scan step
+      // (or that predate PRF-capable pairing).
       const pairBtn = $('#pair-btn', form);
       if (pairBtn) {
         pairBtn.addEventListener('click', async () => {
@@ -2305,7 +2387,8 @@ function keyModal(existing = null) {
             detectedNfc = det.transports.includes('nfc');
             $('#pair-field', form).style.display = 'none';
             $('#secret-field', form).style.display = '';
-            toast('Paired — save to keep it');
+            updateSecretHint();
+            toast(credential.prfEnabled ? 'Paired with encryption support — save to keep it' : 'Paired — save to keep it');
           } catch (err) {
             if (!document.contains(form)) return;
             toast(err.name === 'NotAllowedError' ? 'Cancelled or timed out' : err.message, 'error');
@@ -2368,7 +2451,10 @@ function keyModal(existing = null) {
           }
           detectedAaguid = aaguid;
           detectedNfc = transports.includes('nfc');
-          if (credential) $('#secret-field', form).style.display = '';
+          if (credential) {
+            $('#secret-field', form).style.display = '';
+            updateSecretHint();
+          }
           const hit = await lookupAaguid(aaguid);
           if (!document.contains(form)) return;
 
@@ -2466,8 +2552,28 @@ function keyModal(existing = null) {
       if (!body.name) throw new Error('Give the key a name');
       if (credential) body.credential = credential;
       if (form.secretInput) {
-        if (form.clearSecret && form.clearSecret.checked) body.clearSecret = true;
-        else if (form.secretInput.value.trim()) body.secret = form.secretInput.value.trim();
+        if (form.clearSecret && form.clearSecret.checked) {
+          body.clearSecret = true;
+        } else if (form.secretInput.value.trim()) {
+          let secretVal = form.secretInput.value.trim();
+          const prfCapable = credential ? credential.prfEnabled : !!(existing && existing.prfEnabled);
+          const credId = credential ? credential.id : (existing ? existing.credentialId : '');
+          if (prfCapable && credId) {
+            // One extra tap: derive the encryption key from the hardware itself,
+            // so the server only ever stores ciphertext.
+            const salt = crypto.getRandomValues(new Uint8Array(32));
+            let prfOut;
+            try {
+              prfOut = await derivePrfForKey(credId, salt);
+            } catch (err) {
+              throw new Error(err.name === 'NotAllowedError'
+                ? 'Locking the note needs a key tap — nothing was saved, try again'
+                : err.message);
+            }
+            secretVal = await encryptNote(secretVal, prfOut, salt);
+          }
+          body.secret = secretVal;
+        }
       }
       if (existing) {
         await api(`/keys/${existing.id}`, { method: 'PUT', body });
