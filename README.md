@@ -7,7 +7,7 @@
 **The self-hosted equipment register for your hardware security keys.**
 
 [![Version](https://img.shields.io/github/v/tag/ans-ib/keeyo?style=flat-square&label=version&color=d84315)](https://github.com/ans-ib/keeyo/tags)
-[![License](https://img.shields.io/github/license/ans-ib/keeyo?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![Status](https://img.shields.io/badge/status-early--release-orange?style=flat-square)](https://github.com/ans-ib/keeyo/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/ans-ib/keeyo/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/ans-ib/keeyo/actions)
