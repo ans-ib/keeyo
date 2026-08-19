@@ -72,7 +72,7 @@ volumes:
 - **Sign-in 2FA** — protect Keeyo itself with a hardware key on top of your password.
 - **Health check-ins & logbook** — "tested" stamps with 6-month staleness nudges, and an append-only per-key history.
 - **Print it** — physical asset tags (barcode + QR) and a full printable register sheet; CSV export too.
-- **The basics** — search, filters, keyboard shortcuts, undo on deletes, multi-user, dark mode, JSON backups, installable PWA with offline reading.
+- **The basics** — search, filters, keyboard shortcuts, undo on deletes, multi-user, two selectable design languages (the industrial *Register* look or a calm *Soft* mode) × five color schemes, JSON backups, installable PWA with offline reading.
 
 ## 🔒 Security
 

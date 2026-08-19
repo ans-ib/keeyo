@@ -133,6 +133,47 @@ function staleKeys() {
 
 const CAT = window.KEEYO_CATALOG;
 
+// Appearance = skin (design language) x theme (ink & paper colors).
+const SKINS = [
+  { id: 'register', name: 'Register', desc: 'The industrial asset-tag look — stamps, barcodes, mono labels, hard shadows.' },
+  { id: 'soft', name: 'Soft', desc: 'Calm and minimal — rounded corners, quiet typography, gentle shadows.' },
+];
+
+const THEMES = [
+  { id: 'register', name: 'Paper' },
+  { id: 'night', name: 'Night shift' },
+  { id: 'blueprint', name: 'Blueprint' },
+  { id: 'phosphor', name: 'Phosphor' },
+  { id: 'mist', name: 'Mist' },
+];
+
+function currentTheme() {
+  const t = document.documentElement.dataset.theme || 'register';
+  if (t === 'dark') return 'night';
+  if (t === 'light') return 'register';
+  return THEMES.some((x) => x.id === t) ? t : 'register';
+}
+
+function applyTheme(id) {
+  document.documentElement.classList.add('theme-anim');
+  setTimeout(() => document.documentElement.classList.remove('theme-anim'), 400);
+  if (id === 'register') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = id;
+  localStorage.setItem('keeyo-theme', id);
+}
+
+function currentSkin() {
+  return document.documentElement.dataset.skin === 'soft' ? 'soft' : 'register';
+}
+
+function applySkin(id) {
+  document.documentElement.classList.add('theme-anim');
+  setTimeout(() => document.documentElement.classList.remove('theme-anim'), 400);
+  if (id === 'soft') document.documentElement.dataset.skin = 'soft';
+  else delete document.documentElement.dataset.skin;
+  localStorage.setItem('keeyo-skin', id);
+}
+
 const KIND_LABEL = { passkey: 'Passkey', 'second-factor': '2FA key', totp: 'TOTP' };
 const KIND_CHIP = { passkey: 'accent', 'second-factor': 'info', totp: 'warn' };
 const STATUS_LABEL = { active: 'Active', backup: 'Backup', lost: 'Lost', retired: 'Retired' };
@@ -911,13 +952,10 @@ function shell(content, active, anim = false) {
     <main class="page${anim ? ' anim' : ''}">${content}</main>`;
 
   $('#theme-toggle').addEventListener('click', () => {
-    document.documentElement.classList.add('theme-anim');
-    setTimeout(() => document.documentElement.classList.remove('theme-anim'), 400);
-    // paper is the default; "dark" is the night-shift variant
-    const cur = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-    const next = cur === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem('keeyo-theme', next);
+    const idx = THEMES.findIndex((t) => t.id === currentTheme());
+    const next = THEMES[(idx + 1) % THEMES.length];
+    applyTheme(next.id);
+    toast(`Theme: ${next.name}`);
   });
   $('#logout-btn').addEventListener('click', async () => {
     await api('/logout', { method: 'POST', body: {} });
@@ -1761,6 +1799,26 @@ function viewSettings(section) {
     content = `
       <div class="settings-grid">
       <div class="settings-card">
+        <h2>Appearance</h2>
+        <p class="desc">Two design languages, five color schemes — mix them however you like.</p>
+        <p class="appearance-label">Style</p>
+        <div class="skin-row">
+          ${SKINS.map((s) => `
+            <button type="button" class="skin-tile ${currentSkin() === s.id ? 'on' : ''}" data-skin-pick="${s.id}">
+              <b>${esc(s.name)}</b><span>${esc(s.desc)}</span>
+            </button>`).join('')}
+        </div>
+        <p class="appearance-label">Colors</p>
+        <div class="theme-grid">
+          ${THEMES.map((t) => `
+            <button type="button" class="theme-tile ${currentTheme() === t.id ? 'on' : ''}" data-theme-pick="${t.id}">
+              <span class="tt-preview tt-${t.id}"><span class="tt-panel"></span><span class="tt-accent"></span><span class="tt-ink"></span></span>
+              <span class="tt-name">${esc(t.name)}</span>
+            </button>`).join('')}
+        </div>
+        <p class="hint small muted" style="margin-top:12px">The topbar button cycles the color schemes.</p>
+      </div>
+      <div class="settings-card">
         <h2>Account</h2>
         <p class="desc">Signed in as <b>${esc(state.me.username)}</b>${state.me.isAdmin ? ' (admin)' : ''}</p>
         <form id="pw-form">
@@ -1830,6 +1888,16 @@ function bindSettings(section) {
   }
 
   if (section === 'account') {
+    $$('[data-theme-pick]').forEach((b) =>
+      b.addEventListener('click', () => {
+        applyTheme(b.dataset.themePick);
+        $$('[data-theme-pick]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    $$('[data-skin-pick]').forEach((b) =>
+      b.addEventListener('click', () => {
+        applySkin(b.dataset.skinPick);
+        $$('[data-skin-pick]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
     $('#pw-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;

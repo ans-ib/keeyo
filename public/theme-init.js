@@ -4,6 +4,13 @@
   'use strict';
   try {
     var t = localStorage.getItem('keeyo-theme');
-    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-  } catch (e) { /* storage unavailable — default theme */ }
+    // legacy values from the light/dark era
+    if (t === 'light') t = 'register';
+    if (t === 'dark') t = 'night';
+    if (t === 'night' || t === 'blueprint' || t === 'phosphor' || t === 'mist') {
+      document.documentElement.dataset.theme = t;
+    }
+    var s = localStorage.getItem('keeyo-skin');
+    if (s === 'soft') document.documentElement.dataset.skin = 'soft';
+  } catch (e) { /* storage unavailable — default appearance */ }
 })();
