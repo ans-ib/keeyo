@@ -97,6 +97,16 @@ CREATE TABLE IF NOT EXISTS attachments (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key_id     INTEGER NOT NULL REFERENCES keys(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,
+  detail     TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_key ON events(key_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_key ON attachments(key_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_user ON attachments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
@@ -120,6 +130,7 @@ ensureColumn('keys', 'public_key', "public_key TEXT NOT NULL DEFAULT ''");
 ensureColumn('keys', 'credential_alg', 'credential_alg INTEGER NOT NULL DEFAULT -7');
 ensureColumn('keys', 'secret', "secret TEXT NOT NULL DEFAULT ''");
 ensureColumn('registrations', 'revoked', 'revoked INTEGER NOT NULL DEFAULT 0');
+ensureColumn('keys', 'verified_at', "verified_at TEXT NOT NULL DEFAULT ''");
 
 /** Run fn inside a transaction; rolls back on throw. */
 function tx(fn) {

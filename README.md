@@ -15,7 +15,12 @@ To be super clear upfront: **this app only stores names and notes**. It does not
 *   **Lost key checklist:** If you lose a key, mark it as lost. Keeyo generates a checklist of every service that still trusts it and leaves a warning on your dashboard until you've revoked access everywhere.
 *   **Locked notes:** You can store a secret note for a key (like its PIN), but set it up so the note only reveals itself if you physically tap that exact key. 
 *   **App security:** You can protect your Keeyo account by requiring a hardware key tap along with your password to sign in.
-*   **The basics:** It has built-in search, multi-user support, a dark mode, and a simple one-click JSON export for backups. 
+*   **Health check-ins:** Backup keys tend to rot in drawers. Hit "Tested" whenever you confirm a key still works, and the dashboard will nudge you about any key that hasn't been checked in 6 months.
+*   **Logbook:** Every key carries an append-only history — when it was registered, what was added or removed, status changes, tests. Like a real equipment ledger.
+*   **Print it:** Print a physical asset tag for any key (with its number, barcode and a QR code back to its page) to stick on the keychain, or print the whole register as one inventory sheet. There's a CSV export too.
+*   **Fast entry:** One-tap buttons for common services (GitHub, Google, ...), an "add another" mode for logging many services in a row, and deletes come with a 5-second Undo instead of nagging confirmations. Press `/` to search and `N` for a new key.
+*   **Installable:** It's a PWA — add it to your phone's home screen and the register stays readable even offline.
+*   **The basics:** It has built-in search, filtering and sorting, multi-user support, a dark mode, and a simple one-click JSON export for backups. 
 
 ## Getting started (Docker)
 

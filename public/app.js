@@ -68,6 +68,8 @@ const I = {
   trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
   file: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
   download: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
+  print: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+  check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
   back: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   theme: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>',
@@ -114,7 +116,20 @@ const state = {
   attachments: [],
   keySearch: '',
   svcSearch: '',
+  keyStatusFilter: 'all',
+  keySort: 'newest',
 };
+
+const STALE_DAYS = 180;
+
+function staleKeys() {
+  const cutoff = Date.now() - STALE_DAYS * 86400000;
+  return state.keys.filter((k) => {
+    if (k.status !== 'active' && k.status !== 'backup') return false;
+    const last = new Date(k.verifiedAt || k.createdAt).getTime();
+    return Number.isFinite(last) && last < cutoff;
+  });
+}
 
 const CAT = window.KEEYO_CATALOG;
 
@@ -472,6 +487,103 @@ function barcodeSVG(id, width = 72, height = 16) {
 
 const tagNo = (id) => `KY-${String(id).padStart(3, '0')}`;
 
+const COMMON_SERVICES = [
+  { name: 'GitHub', url: 'github.com' }, { name: 'Google', url: 'google.com' },
+  { name: 'Microsoft', url: 'microsoft.com' }, { name: 'Apple', url: 'apple.com' },
+  { name: 'Amazon', url: 'amazon.com' }, { name: 'Proton', url: 'proton.me' },
+  { name: 'Bitwarden', url: 'bitwarden.com' }, { name: 'Discord', url: 'discord.com' },
+  { name: 'X', url: 'x.com' }, { name: 'Facebook', url: 'facebook.com' },
+  { name: 'PayPal', url: 'paypal.com' }, { name: 'Cloudflare', url: 'cloudflare.com' },
+];
+
+/* ============================== print & export ============================== */
+
+function qrSVG(text) {
+  try {
+    const qr = window.qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 3, margin: 0 });
+  } catch {
+    return '';
+  }
+}
+
+// Physical asset tag for the keychain — the design was always headed here.
+function printTag(key) {
+  const url = `${location.origin}/#/keys/${key.id}`;
+  $('#print-root').innerHTML = `
+    <div class="print-tag">
+      <div class="pt-head">
+        <span class="pt-hole"></span>
+        <span class="pt-brand">KEEYO · EQUIPMENT REGISTER</span>
+        <span class="pt-no">${tagNo(key.id)}</span>
+      </div>
+      <div class="pt-body">
+        <div class="pt-info">
+          <div class="pt-name">${esc(key.name)}</div>
+          <div class="pt-model">${esc([key.vendor, key.model].filter(Boolean).join(' / ') || 'model unknown')}</div>
+          ${key.serial ? `<div class="pt-model">SN ${esc(key.serial)}</div>` : ''}
+          <div class="pt-barcode">${barcodeSVG(key.id, 110, 22)}</div>
+        </div>
+        <div class="pt-qr">${qrSVG(url)}</div>
+      </div>
+      <div class="pt-foot">${esc(url)}</div>
+    </div>`;
+  window.print();
+}
+
+function printRegister() {
+  const rows = [];
+  for (const k of state.keys) {
+    const regs = regsForKey(k.id);
+    if (!regs.length) rows.push({ k, r: null, svc: null });
+    for (const r of regs) rows.push({ k, r, svc: serviceById(r.serviceId) });
+  }
+  $('#print-root').innerHTML = `
+    <div class="print-register">
+      <h1>KEEYO — EQUIPMENT REGISTER</h1>
+      <div class="pr-meta">${state.keys.length} keys · ${state.registrations.length} registrations ·
+        printed ${esc(new Date().toLocaleDateString())} · holder: ${esc(state.me.username)}</div>
+      <table>
+        <thead><tr><th>Tag</th><th>Key</th><th>Model</th><th>Status</th><th>Service</th><th>Type</th><th>Account</th></tr></thead>
+        <tbody>
+          ${rows.map(({ k, r, svc }) => `
+            <tr>
+              <td>${tagNo(k.id)}</td>
+              <td>${esc(k.name)}</td>
+              <td>${esc([k.vendor, k.model].filter(Boolean).join(' '))}</td>
+              <td>${esc(STATUS_LABEL[k.status])}</td>
+              <td>${r ? esc(svc ? svc.name : '(deleted)') : '—'}</td>
+              <td>${r ? esc(KIND_LABEL[r.kind]) + (r.revoked ? ' · revoked' : '') : ''}</td>
+              <td>${r ? esc(r.account) : ''}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  window.print();
+}
+
+function exportCSV() {
+  const head = ['tag', 'key', 'vendor', 'model', 'serial', 'status', 'service', 'kind', 'account', 'totp_app', 'revoked'];
+  const lines = [head];
+  for (const k of state.keys) {
+    const regs = regsForKey(k.id);
+    if (!regs.length) lines.push([tagNo(k.id), k.name, k.vendor, k.model, k.serial, k.status, '', '', '', '', '']);
+    for (const r of regs) {
+      const svc = serviceById(r.serviceId);
+      lines.push([tagNo(k.id), k.name, k.vendor, k.model, k.serial, k.status,
+        svc ? svc.name : '', r.kind, r.account, r.totpApp, r.revoked ? 'yes' : 'no']);
+    }
+  }
+  const csv = lines.map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `keeyo-register-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // A key's uploaded photo, or the drawn artwork as fallback.
 function keyVisual(key, size) {
   if (key.image) return `<img class="key-photo" src="${key.image}" alt="" style="max-height:${size}px;max-width:${size}px">`;
@@ -501,16 +613,54 @@ function serviceIconHTML(svc, cls = '') {
 
 /* ============================== toasts / modal / confirm ============================== */
 
-function toast(message, type = 'success') {
+function toast(message, type = 'success', { actionLabel, onAction, duration = 2800 } = {}) {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = message;
+  if (actionLabel) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', () => {
+      el.remove();
+      if (onAction) onAction();
+    });
+    el.appendChild(btn);
+  }
   $('#toast-root').appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity 0.3s';
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 320);
-  }, 2800);
+  }, duration);
+  return el;
+}
+
+// Optimistic delete with a 5-second undo window: the item vanishes from the UI
+// immediately, the server call only happens when the window closes.
+function deleteWithUndo({ label, apply, revert, commit }) {
+  apply();
+  render();
+  let undone = false;
+  const timer = setTimeout(async () => {
+    if (undone) return;
+    try {
+      await commit();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    refresh();
+  }, 5000);
+  toast(label, 'success', {
+    actionLabel: 'Undo',
+    duration: 5000,
+    onAction: () => {
+      undone = true;
+      clearTimeout(timer);
+      revert();
+      render();
+    },
+  });
 }
 
 function openModal({ title, code = 'Keeyo register', bodyHTML, submitLabel = 'Save', danger = false, extraFootHTML = '', wide = false, onOpen, onSubmit }) {
@@ -582,7 +732,8 @@ function openModal({ title, code = 'Keeyo register', bodyHTML, submitLabel = 'Sa
     btn.disabled = true;
     try {
       await onSubmit(form, close);
-      close();
+      if (form.keepOpen) form.keepOpen = false;
+      else close();
     } catch (err) {
       const box = $('.form-error', form);
       box.textContent = err.message || 'Something went wrong';
@@ -864,7 +1015,12 @@ function keyMatchesSearch(key, q) {
 
 function viewKeys() {
   const q = state.keySearch.trim().toLowerCase();
-  const matches = state.keys
+  let pool = state.keys;
+  if (state.keyStatusFilter !== 'all') pool = pool.filter((k) => k.status === state.keyStatusFilter);
+  if (state.keySort === 'name') pool = [...pool].sort((a, b) => a.name.localeCompare(b.name));
+  else if (state.keySort === 'vendor') pool = [...pool].sort((a, b) => (a.vendor + a.model).localeCompare(b.vendor + b.model));
+  else pool = [...pool].reverse(); // newest first
+  const matches = pool
     .map((k) => ({ key: k, ...keyMatchesSearch(k, q) }))
     .filter((m) => m.match);
 
@@ -937,6 +1093,34 @@ function viewKeys() {
       <a href="#/keys/${lostPending[0].k.id}">Open checklist</a></div>` + banner;
   }
 
+  // Backup keys rot in drawers — nudge for keys not tested in 6 months.
+  const stale = staleKeys();
+  if (stale.length) {
+    banner += `<div class="notice-strip">${I.warn}
+      <span>${stale.length === 1 ? `${tagNo(stale[0].id)} “${esc(stale[0].name)}” hasn't` : `${stale.length} keys haven't`} been tested in ${STALE_DAYS / 30}+ months — plug in and confirm ${stale.length === 1 ? 'it still works' : 'they still work'}</span>
+      <a href="#/keys/${stale[0].id}">Open key</a></div>`;
+  }
+
+  // First-run coach: keys exist but nothing is logged on them yet.
+  const coach = state.keys.length && state.registrations.length === 0
+    ? `<div class="notice-strip info-strip">${I.keyIcon}<span>Now open a tag and log what lives on it — every passkey, 2FA registration and TOTP.</span></div>`
+    : '';
+
+  const toolbar = state.keys.length ? `
+    <div class="grid-toolbar">
+      <div class="filter-chips">
+        ${['all', 'active', 'backup', 'lost', 'retired'].map((s) =>
+          `<button class="fchip ${state.keyStatusFilter === s ? 'on' : ''}" data-filter="${s}">${s === 'all' ? 'All' : STATUS_LABEL[s]}</button>`).join('')}
+      </div>
+      <div class="grow" style="flex:1"></div>
+      <select id="key-sort" class="sort-select" title="Sort">
+        <option value="newest" ${state.keySort === 'newest' ? 'selected' : ''}>Newest first</option>
+        <option value="name" ${state.keySort === 'name' ? 'selected' : ''}>By name</option>
+        <option value="vendor" ${state.keySort === 'vendor' ? 'selected' : ''}>By vendor</option>
+      </select>
+      <button class="btn btn-sm" id="print-register" title="Print the full register">${I.print} Print</button>
+    </div>` : '';
+
   return `
     <div class="page-head">
       <h1>Key register</h1>
@@ -945,13 +1129,29 @@ function viewKeys() {
       <div class="search-box">${I.search}<input id="key-search" type="text" placeholder="SEARCH KEYS / SERVICES…" value="${esc(state.keySearch)}"></div>
       <button class="btn btn-primary" data-add-key>${I.plus} Register key</button>
     </div>
-    ${state.keys.length ? '<p class="page-sub">Every physical key on file, and what lives on it. Open a tag for its full record.</p>' : ''}
+    ${state.keys.length ? '<p class="page-sub">Every physical key on file, and what lives on it. Open a tag for its full record. <span class="kbd-hint">( / to search · N for new key )</span></p>' : ''}
+    ${toolbar}
+    ${coach}
     ${banner}
     ${grid}`;
 }
 
 function bindKeys() {
   $$('[data-add-key]').forEach((b) => b.addEventListener('click', () => keyModal()));
+  $$('[data-filter]').forEach((b) =>
+    b.addEventListener('click', () => {
+      state.keyStatusFilter = b.dataset.filter;
+      render();
+    }));
+  const sortSel = $('#key-sort');
+  if (sortSel) {
+    sortSel.addEventListener('change', () => {
+      state.keySort = sortSel.value;
+      render();
+    });
+  }
+  const printBtn = $('#print-register');
+  if (printBtn) printBtn.addEventListener('click', printRegister);
   $$('[data-key-id]').forEach((card) =>
     card.addEventListener('click', () => { location.hash = `#/keys/${card.dataset.keyId}`; }));
   const search = $('#key-search');
@@ -1005,6 +1205,7 @@ function viewKeyDetail(key) {
   if (key.model) meta.push(esc(key.model));
   if (key.serial) meta.push(`SN ${esc(key.serial)}`);
   if (key.purchasedAt) meta.push(`bought ${esc(formatDate(key.purchasedAt))}`);
+  meta.push(key.verifiedAt ? `tested ${esc(formatDate(key.verifiedAt))}` : 'never tested');
 
   let capacity = '';
   if (model && (model.passkeySlots || model.totpSlots)) {
@@ -1043,6 +1244,8 @@ function viewKeyDetail(key) {
         </div>` : ''}
       </div>
       <div class="hero-actions">
+        <button class="btn btn-sm" data-verify-key title="Confirm this key still works">${I.check} Tested</button>
+        <button class="btn btn-sm" data-print-tag title="Print an asset tag">${I.print}</button>
         <button class="btn btn-sm" data-edit-key>${I.edit} Edit</button>
         <button class="btn btn-sm btn-danger" data-del-key>${I.trash}</button>
       </div>
@@ -1127,11 +1330,47 @@ function viewKeyDetail(key) {
             </div>`).join('')
           : '<div class="section-empty">Receipts, recovery sheets, manuals… up to 10 files, 5 MB each.</div>'}
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Logbook</h2></div>
+      <div class="ledger" id="ledger"><div class="section-empty">Loading…</div></div>
     </div>`;
 }
 
+const EVENT_LABEL = {
+  created: 'REG', status: 'STAT', 'registration-added': 'ADD', 'registration-removed': 'DEL',
+  revoked: 'REVK', unrevoked: 'UNRV', 'secret-set': 'LOCK', 'secret-cleared': 'CLR',
+  paired: 'PAIR', 'attachment-added': 'FILE', 'attachment-removed': 'FILE', verified: 'TEST',
+};
+
 function bindKeyDetail(key) {
   $('[data-edit-key]').addEventListener('click', () => keyModal(key));
+
+  // logbook loads lazily
+  api(`/keys/${key.id}/events`).then((rows) => {
+    const box = $('#ledger');
+    if (!box) return;
+    box.innerHTML = rows.length
+      ? rows.map((ev) => `
+        <div class="ledger-row">
+          <span class="ledger-date">${esc(formatDate(ev.createdAt))}</span>
+          <span class="ledger-kind">${esc(EVENT_LABEL[ev.kind] || ev.kind)}</span>
+          <span class="ledger-detail">${esc(ev.detail)}</span>
+        </div>`).join('')
+      : '<div class="section-empty">No entries yet.</div>';
+  }).catch(() => {
+    const box = $('#ledger');
+    if (box) box.innerHTML = '<div class="section-empty">Could not load the logbook.</div>';
+  });
+
+  $('[data-verify-key]').addEventListener('click', async () => {
+    await api(`/keys/${key.id}/verify`, { method: 'POST', body: {} });
+    toast('Marked as tested today');
+    refresh();
+  });
+
+  $('[data-print-tag]').addEventListener('click', () => printTag(key));
 
   // ----- secret reveal (proof of possession) -----
   const revealBtn = $('#reveal-btn');
@@ -1210,15 +1449,15 @@ function bindKeyDetail(key) {
     }));
 
   $$('[data-del-att]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      const ok = await confirmDialog({
-        title: 'Delete file?',
-        message: `Delete <b>${esc(b.dataset.attName)}</b> permanently?`,
+    b.addEventListener('click', () => {
+      const att = state.attachments.find((a) => a.id === Number(b.dataset.delAtt));
+      if (!att) return;
+      deleteWithUndo({
+        label: `Deleted ${att.name}`,
+        apply: () => { state.attachments = state.attachments.filter((a) => a.id !== att.id); },
+        revert: () => { state.attachments.push(att); },
+        commit: () => api(`/attachments/${att.id}`, { method: 'DELETE' }),
       });
-      if (!ok) return;
-      await api(`/attachments/${b.dataset.delAtt}`, { method: 'DELETE' });
-      toast('File deleted');
-      refresh();
     }));
   $('[data-del-key]').addEventListener('click', async () => {
     const n = regsForKey(key.id).length;
@@ -1248,19 +1487,16 @@ function bindKeyDetail(key) {
       if (reg) registrationModal({ key: keyById(reg.keyId), reg });
     }));
   $$('[data-del-reg]').forEach((b) =>
-    b.addEventListener('click', async () => {
+    b.addEventListener('click', () => {
       const reg = state.registrations.find((r) => r.id === Number(b.dataset.delReg));
       if (!reg) return;
       const svc = serviceById(reg.serviceId);
-      const ok = await confirmDialog({
-        title: 'Remove registration?',
-        message: `Remove <b>${esc(svc ? svc.name : '')}</b> (${KIND_LABEL[reg.kind]}) from this key?`,
-        confirmLabel: 'Remove',
+      deleteWithUndo({
+        label: `Removed ${svc ? svc.name : 'registration'}`,
+        apply: () => { state.registrations = state.registrations.filter((r) => r.id !== reg.id); },
+        revert: () => { state.registrations.push(reg); },
+        commit: () => api(`/registrations/${reg.id}`, { method: 'DELETE' }),
       });
-      if (!ok) return;
-      await api(`/registrations/${reg.id}`, { method: 'DELETE' });
-      toast('Registration removed');
-      refresh();
     }));
 }
 
@@ -1298,8 +1534,8 @@ function viewServicesSection() {
           style="background:${esc(k.color)}" title="${esc(k.name)} (${STATUS_LABEL[k.status]})"
           data-goto-key="${k.id}">${esc(k.name.charAt(0).toUpperCase())}</span>`).join('');
       let badge = '';
-      if (usable.length === 0) badge = `<span class="chip danger">${I.warn} not on any key</span>`;
-      else if (usable.length === 1) badge = `<span class="chip warn">${I.warn} no backup key</span>`;
+      if (usable.length === 0) badge = `<button type="button" class="chip danger chip-btn" data-fix-svc="${svc.id}" title="Register it on a key now">${I.warn} not on any key — fix</button>`;
+      else if (usable.length === 1) badge = `<button type="button" class="chip warn chip-btn" data-fix-svc="${svc.id}" title="Register it on a second key now">${I.warn} no backup — add one</button>`;
       return `
         <div class="row clickable" data-svc-id="${svc.id}">
           ${serviceIconHTML(svc)}
@@ -1336,11 +1572,17 @@ function bindServicesSection() {
   $$('[data-add-svc]').forEach((b) => b.addEventListener('click', () => serviceModal()));
   $$('[data-svc-id]').forEach((row) =>
     row.addEventListener('click', (e) => {
-      if (e.target.closest('[data-goto-key]')) return;
+      if (e.target.closest('[data-goto-key]') || e.target.closest('[data-fix-svc]')) return;
       serviceDetailModal(Number(row.dataset.svcId));
     }));
   $$('[data-goto-key]').forEach((dot) =>
     dot.addEventListener('click', () => { location.hash = `#/keys/${dot.dataset.gotoKey}`; }));
+  $$('[data-fix-svc]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const svc = serviceById(Number(b.dataset.fixSvc));
+      if (svc) pickKeyModal(svc);
+    }));
   const search = $('#svc-search');
   if (search) {
     search.addEventListener('input', () => {
@@ -1387,20 +1629,30 @@ function serviceDetailModal(svcId) {
       <div class="section" style="margin:0"><div class="row-list">
         ${regRows || '<div class="section-empty">Not registered on any key yet.</div>'}
       </div></div>`,
-    extraFootHTML: '<button type="button" class="btn btn-sm btn-danger left" data-del-svc>Delete</button>',
+    extraFootHTML: `<button type="button" class="btn btn-sm btn-danger left" data-del-svc>Delete</button>
+      <button type="button" class="btn btn-sm" data-reg-more>${I.plus} Another key</button>`,
     onOpen: (form, close) => {
       $$('[data-goto]', form).forEach((b) =>
         b.addEventListener('click', () => { close(); location.hash = `#/keys/${b.dataset.goto}`; }));
-      $('[data-del-svc]', form).addEventListener('click', async () => {
+      $('[data-reg-more]', form).addEventListener('click', () => {
         close();
-        const ok = await confirmDialog({
-          title: `Delete "${svc.name}"?`,
-          message: `This removes the service and its ${regs.length} registration${regs.length !== 1 ? 's' : ''} from all keys.`,
+        pickKeyModal(svc);
+      });
+      $('[data-del-svc]', form).addEventListener('click', () => {
+        close();
+        const svcRegs = regsForService(svc.id);
+        deleteWithUndo({
+          label: `Deleted ${svc.name}`,
+          apply: () => {
+            state.services = state.services.filter((s) => s.id !== svc.id);
+            state.registrations = state.registrations.filter((r) => r.serviceId !== svc.id);
+          },
+          revert: () => {
+            state.services.push(svc);
+            state.registrations.push(...svcRegs);
+          },
+          commit: () => api(`/services/${svc.id}`, { method: 'DELETE' }),
         });
-        if (!ok) return;
-        await api(`/services/${svc.id}`, { method: 'DELETE' });
-        toast('Service deleted');
-        refresh();
       });
     },
     onSubmit: async (form, close) => {
@@ -1464,6 +1716,7 @@ function viewSettings(section) {
         <p class="desc">Export your keys, services and registrations as a JSON file, or restore from a previous export.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <a class="btn" href="/api/export">Export data</a>
+          <button class="btn" id="csv-btn">${I.download} Export CSV</button>
           <button class="btn" id="import-btn">Import backup…</button>
           <input type="file" id="import-file" accept="application/json,.json" style="display:none">
         </div>
@@ -1518,6 +1771,7 @@ function bindSettings(section) {
   }
 
   if (section === 'data') {
+    $('#csv-btn').addEventListener('click', exportCSV);
     $('#import-btn').addEventListener('click', () => $('#import-file').click());
     $('#import-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
@@ -1804,14 +2058,15 @@ function bindCatalogSection() {
   }
 
   $$('[data-del-cat]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      try {
-        await api(`/catalog/${b.dataset.delCat}`, { method: 'DELETE' });
-        toast('Removed');
-        refresh();
-      } catch (err) {
-        toast(err.message, 'error');
-      }
+    b.addEventListener('click', () => {
+      const item = state.catalog.find((c) => c.id === Number(b.dataset.delCat));
+      if (!item) return;
+      deleteWithUndo({
+        label: `Removed ${item.value}`,
+        apply: () => { state.catalog = state.catalog.filter((c) => c.id !== item.id); },
+        revert: () => { state.catalog.push(item); },
+        commit: () => api(`/catalog/${item.id}`, { method: 'DELETE' }),
+      });
     }));
 
   $$('.tag-add').forEach((f) =>
@@ -2292,13 +2547,15 @@ function serviceModal(existing = null, onSaved = null) {
 
 /* ============================== registration form ============================== */
 
-function registrationModal({ key, reg = null, presetKind = null }) {
+function registrationModal({ key, reg = null, presetKind = null, presetService = null }) {
   const model = catalogModel(key);
   const editing = !!reg;
   const initialKind = reg ? reg.kind : (presetKind === 'totp' ? 'totp' : 'passkey');
   const svcFixed = editing ? serviceById(reg.serviceId) : null;
 
   const totpApps = CAT.totpApps.map((a) => `<option value="${esc(a)}"></option>`).join('');
+  const keyOptions = state.keys.map((k) =>
+    `<option value="${k.id}" ${editing && k.id === reg.keyId ? 'selected' : ''}>${esc(`${tagNo(k.id)} · ${k.name}`)}</option>`).join('');
 
   openModal({
     title: editing ? 'Edit registration' : `Add to "${key.name}"`,
@@ -2307,11 +2564,16 @@ function registrationModal({ key, reg = null, presetKind = null }) {
     bodyHTML: `
       ${editing
         ? `<div class="field"><label>Service</label>
-             <div class="selected-service">${serviceIconHTML(svcFixed || { name: '?' }, 'sm')}<span class="name">${esc(svcFixed ? svcFixed.name : '')}</span></div></div>`
+             <div class="selected-service">${serviceIconHTML(svcFixed || { name: '?' }, 'sm')}<span class="name">${esc(svcFixed ? svcFixed.name : '')}</span></div></div>
+           <div class="field"><label>On key</label><select name="moveKey">${keyOptions}</select>
+             <div class="hint">Change this to move the registration to another key.</div></div>`
         : `<div class="field"><label>Service</label>
              <div class="combo" id="svc-combo">
                <input type="text" name="svcSearch" placeholder="Search or type a new service…" autocomplete="off">
                <div class="combo-list"></div>
+             </div>
+             <div class="quick-picks" id="quick-picks">
+               ${COMMON_SERVICES.map((s) => `<button type="button" class="qp" data-qp="${esc(s.name)}" data-qp-url="${esc(s.url)}">${esc(s.name)}</button>`).join('')}
              </div>
              <div class="selected-service" id="svc-selected" style="display:none">
                <span class="icon-slot"></span><span class="name"></span>
@@ -2337,7 +2599,8 @@ function registrationModal({ key, reg = null, presetKind = null }) {
         <datalist id="totp-apps">${totpApps}</datalist>
         <div class="hint">The app you use to read this code from the key.</div></div>
       <div class="field"><label>Notes <span class="muted">(optional)</span></label>
-        <textarea name="notes">${esc(reg ? reg.notes : '')}</textarea></div>`,
+        <textarea name="notes">${esc(reg ? reg.notes : '')}</textarea></div>
+      ${editing ? '' : '<label class="check-line"><input type="checkbox" name="addAnother"> Add another to this key after saving</label>'}`,
     onOpen: (form) => {
       let kind = initialKind;
       let selectedService = svcFixed;
@@ -2364,6 +2627,7 @@ function registrationModal({ key, reg = null, presetKind = null }) {
         const list = $('.combo-list', form);
         const selectedBox = $('#svc-selected', form);
         const newFields = $('#new-svc-fields', form);
+        const quickPicks = $('#quick-picks', form);
 
         function select(svc) {
           selectedService = svc;
@@ -2374,9 +2638,10 @@ function registrationModal({ key, reg = null, presetKind = null }) {
           $('.icon-slot', selectedBox).innerHTML = serviceIconHTML(svc, 'sm');
           $('.name', selectedBox).textContent = svc.name;
           newFields.style.display = 'none';
+          quickPicks.style.display = 'none';
         }
 
-        function selectCreate(name) {
+        function selectCreate(name, url = '') {
           selectedService = { name };
           createNew = true;
           input.parentElement.style.display = 'none';
@@ -2385,6 +2650,8 @@ function registrationModal({ key, reg = null, presetKind = null }) {
           $('.icon-slot', selectedBox).innerHTML = serviceIconHTML({ name }, 'sm');
           $('.name', selectedBox).textContent = `${name} (new)`;
           newFields.style.display = '';
+          form.newUrl.value = url;
+          quickPicks.style.display = 'none';
         }
 
         function clearSelection() {
@@ -2394,6 +2661,7 @@ function registrationModal({ key, reg = null, presetKind = null }) {
           newFields.style.display = 'none';
           input.parentElement.style.display = '';
           input.value = '';
+          quickPicks.style.display = '';
           input.focus();
           renderList();
         }
@@ -2429,6 +2697,24 @@ function registrationModal({ key, reg = null, presetKind = null }) {
           }
         });
         $('#svc-clear', form).addEventListener('click', clearSelection);
+
+        // one-tap common services
+        $$('.qp', form).forEach((b) =>
+          b.addEventListener('click', () => {
+            const name = b.dataset.qp;
+            const existing = state.services.find((s) => s.name.toLowerCase() === name.toLowerCase());
+            if (existing) select(existing);
+            else selectCreate(name, b.dataset.qpUrl || '');
+          }));
+
+        if (presetService) select(presetService);
+
+        // used by "add another" to reset for the next entry without closing
+        form.resetForNext = () => {
+          clearSelection();
+          form.account.value = '';
+          form.notes.value = '';
+        };
       }
 
       form.getPayload = () => {
@@ -2449,17 +2735,82 @@ function registrationModal({ key, reg = null, presetKind = null }) {
     onSubmit: async (form) => {
       const payload = form.getPayload();
       if (editing) {
+        payload.keyId = Number(form.moveKey.value) || reg.keyId;
+        payload.revoked = reg.revoked;
         await api(`/registrations/${reg.id}`, { method: 'PUT', body: payload });
-        toast('Registration updated');
+        toast(payload.keyId !== reg.keyId ? 'Moved to the other key' : 'Registration updated');
       } else {
         await api('/registrations', { body: payload });
         toast('Added to key');
+        if (form.addAnother && form.addAnother.checked) {
+          form.keepOpen = true;
+          if (form.resetForNext) form.resetForNext();
+        }
       }
       refresh();
     },
   });
 }
 
+// Pick which key a service should (also) live on — the actionable side of
+// the coverage warnings.
+function pickKeyModal(svc) {
+  const covered = new Set(regsForService(svc.id).map((r) => r.keyId));
+  const order = { active: 0, backup: 1, retired: 2, lost: 3 };
+  const keys = [...state.keys].sort((a, b) =>
+    (covered.has(a.id) - covered.has(b.id)) || (order[a.status] - order[b.status]));
+  openModal({
+    title: `Register “${svc.name}” on…`,
+    code: 'Form R-01 · pick a key',
+    submitLabel: 'Cancel',
+    bodyHTML: keys.length ? `
+      <div class="section" style="margin:0;box-shadow:none"><div class="row-list">
+        ${keys.map((k) => `
+          <button type="button" class="row clickable pick-row" data-pick="${k.id}">
+            <span class="key-dot" style="background:${esc(k.color)}">${esc(k.name.charAt(0).toUpperCase())}</span>
+            <div class="row-main"><div class="row-title">${esc(k.name)}
+              <span class="status-badge status-${esc(k.status)}">${STATUS_LABEL[k.status]}</span>
+              ${covered.has(k.id) ? '<span class="chip ok">already on it</span>' : ''}
+            </div></div>
+          </button>`).join('')}
+      </div></div>` : '<p class="muted">No keys on file yet.</p>',
+    onOpen: (form, close) => {
+      $('button[type=submit]', form).classList.remove('btn-primary');
+      $$('[data-pick]', form).forEach((b) =>
+        b.addEventListener('click', () => {
+          const k = keyById(Number(b.dataset.pick));
+          close();
+          if (k) registrationModal({ key: k, presetService: svc });
+        }));
+    },
+    onSubmit: async () => { /* footer button just closes */ },
+  });
+}
+
+/* ============================== global keyboard shortcuts ============================== */
+
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  if ($('#modal-root').firstElementChild) return;
+  if (!state.me) return;
+  if (e.key === '/') {
+    const s = $('#key-search') || $('#svc-search');
+    if (s) {
+      e.preventDefault();
+      s.focus();
+    }
+  } else if (e.key.toLowerCase() === 'n' && parseRoute().page === 'keys') {
+    e.preventDefault();
+    keyModal();
+  }
+});
+
 /* ============================== go ============================== */
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* PWA is optional */ });
+}
 
 boot();

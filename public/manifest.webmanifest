@@ -1,0 +1,12 @@
+{
+  "name": "Keeyo — Equipment Register",
+  "short_name": "Keeyo",
+  "description": "Self-hosted inventory for your hardware security keys.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eae5d8",
+  "theme_color": "#eae5d8",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

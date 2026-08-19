@@ -214,6 +214,30 @@ test('export/import round-trips keys, secrets, pairing and revoked flags', async
   keyId = d.data.keys[0].id;
 });
 
+test('verify endpoint stamps the key and the logbook records everything', async () => {
+  const v = await call(`/keys/${keyId}/verify`, { method: 'POST', body: {} });
+  assert.equal(v.status, 200);
+  assert.ok(v.data.verifiedAt, 'verifiedAt is set');
+  const ev = await call(`/keys/${keyId}/events`);
+  assert.equal(ev.status, 200);
+  const kinds = ev.data.map((e) => e.kind);
+  assert.ok(kinds.includes('verified'), 'verified event logged');
+  assert.ok(kinds.includes('created'), 'creation event logged');
+});
+
+test('registrations can be moved between keys', async () => {
+  const k2 = await call('/keys', { body: { name: 'Second key', vendor: 'Token2', formFactor: 'usb-a', color: '#4ade80' } });
+  const d = await call('/data');
+  const reg = d.data.registrations[0];
+  const moved = await call(`/registrations/${reg.id}`, { method: 'PUT', body: { ...reg, keyId: k2.data.id } });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.data.keyId, k2.data.id);
+  const evNew = await call(`/keys/${k2.data.id}/events`);
+  assert.ok(evNew.data.some((e) => e.kind === 'registration-added'), 'move logged on the new key');
+  // move it back
+  await call(`/registrations/${reg.id}`, { method: 'PUT', body: { ...reg, keyId } });
+});
+
 let mfaAuthr;
 
 test('MFA: enroll a sign-in key with verified creation ceremony', async () => {

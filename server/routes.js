@@ -9,6 +9,7 @@ const mds = require('./mds');
 const router = express.Router();
 
 const KINDS = ['passkey', 'second-factor', 'totp'];
+const KIND_LABELS = { passkey: 'passkey', 'second-factor': '2FA', totp: 'TOTP' };
 const STATUSES = ['active', 'backup', 'lost', 'retired'];
 const CATALOG_TYPES = ['vendor', 'model', 'form-factor', 'color'];
 
@@ -195,9 +196,17 @@ function intId(value) {
 
 const KEY_COLS = `id, name, vendor, model, serial, color,
   form_factor AS formFactor, status, purchased_at AS purchasedAt, notes, image,
-  credential_id AS credentialId,
+  credential_id AS credentialId, verified_at AS verifiedAt,
   CASE WHEN secret != '' THEN 1 ELSE 0 END AS hasSecret,
   created_at AS createdAt`;
+
+// Append-only per-key logbook (capped at 200 entries per key).
+function logEvent(userId, keyId, kind, detail = '') {
+  db.prepare('INSERT INTO events (user_id, key_id, kind, detail) VALUES (?, ?, ?, ?)')
+    .run(userId, keyId, kind, String(detail).slice(0, 300));
+  db.prepare('DELETE FROM events WHERE key_id = ? AND id NOT IN (SELECT id FROM events WHERE key_id = ? ORDER BY id DESC LIMIT 200)')
+    .run(keyId, keyId);
+}
 const SERVICE_COLS = `id, name, url, icon, notes, created_at AS createdAt`;
 const REG_COLS = `id, key_id AS keyId, service_id AS serviceId, kind, account,
   totp_app AS totpApp, notes, revoked, created_at AS createdAt`;
@@ -471,12 +480,15 @@ router.post('/keys', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(req.user.id, k.name, k.vendor, k.model, k.serial, k.color, k.formFactor, k.status, k.purchasedAt, k.notes,
     k.image, cred ? cred.id : '', cred ? cred.publicKeyPem : '', cred ? cred.alg : -7, secret || '');
-  res.json(getKey(req.user.id, Number(info.lastInsertRowid)));
+  const newId = Number(info.lastInsertRowid);
+  logEvent(req.user.id, newId, 'created', `Registered — ${[k.vendor, k.model].filter(Boolean).join(' ') || 'unknown model'}${cred ? ' (paired)' : ''}`);
+  if (secret) logEvent(req.user.id, newId, 'secret-set', 'Secret note stored');
+  res.json(getKey(req.user.id, newId));
 });
 
 router.put('/keys/:id', (req, res) => {
   const id = intId(req.params.id);
-  getKey(req.user.id, id);
+  const before = getKey(req.user.id, id);
   const body = req.body || {};
   const k = sanitizeKey(body);
   db.prepare(`
@@ -496,11 +508,31 @@ router.put('/keys/:id', (req, res) => {
     }
     db.prepare('UPDATE keys SET credential_id = ?, public_key = ?, credential_alg = ? WHERE user_id = ? AND id = ?')
       .run(cred.id, cred.publicKeyPem, cred.alg, req.user.id, id);
+    if (cred.id !== before.credentialId) logEvent(req.user.id, id, 'paired', 'Paired with the physical key');
   }
   if (secret !== undefined) {
     db.prepare('UPDATE keys SET secret = ? WHERE user_id = ? AND id = ?').run(secret, req.user.id, id);
+    logEvent(req.user.id, id, secret ? 'secret-set' : 'secret-cleared', secret ? 'Secret note stored' : 'Secret note cleared');
+  }
+  if (k.status !== before.status) {
+    logEvent(req.user.id, id, 'status', `Status: ${before.status} → ${k.status}`);
   }
   res.json(getKey(req.user.id, id));
+});
+
+router.post('/keys/:id/verify', (req, res) => {
+  const id = intId(req.params.id);
+  getKey(req.user.id, id);
+  db.prepare('UPDATE keys SET verified_at = ? WHERE user_id = ? AND id = ?')
+    .run(new Date().toISOString(), req.user.id, id);
+  logEvent(req.user.id, id, 'verified', 'Key tested and confirmed working');
+  res.json(getKey(req.user.id, id));
+});
+
+router.get('/keys/:id/events', (req, res) => {
+  const id = intId(req.params.id);
+  getKey(req.user.id, id);
+  res.json(db.prepare('SELECT id, kind, detail, created_at AS createdAt FROM events WHERE key_id = ? ORDER BY id DESC LIMIT 200').all(id));
 });
 
 // ---------- secret reveal (requires tapping the physical key) ----------
@@ -546,6 +578,7 @@ router.post('/keys/:id/attachments', (req, res) => {
   if (buf.length > 5 * 1024 * 1024) throw new ApiError(400, 'Files can be at most 5 MB');
   const info = db.prepare('INSERT INTO attachments (user_id, key_id, name, mime, size, data) VALUES (?, ?, ?, ?, ?, ?)')
     .run(req.user.id, id, name, mime, buf.length, buf);
+  logEvent(req.user.id, id, 'attachment-added', name);
   const row = db.prepare(`SELECT ${ATTACH_COLS} FROM attachments WHERE id = ?`).get(Number(info.lastInsertRowid));
   res.json(row);
 });
@@ -562,9 +595,10 @@ router.get('/attachments/:id', (req, res) => {
 
 router.delete('/attachments/:id', (req, res) => {
   const id = intId(req.params.id);
-  const row = db.prepare('SELECT id FROM attachments WHERE user_id = ? AND id = ?').get(req.user.id, id);
+  const row = db.prepare('SELECT id, key_id AS keyId, name FROM attachments WHERE user_id = ? AND id = ?').get(req.user.id, id);
   if (!row) throw new ApiError(404, 'File not found');
   db.prepare('DELETE FROM attachments WHERE user_id = ? AND id = ?').run(req.user.id, id);
+  logEvent(req.user.id, row.keyId, 'attachment-removed', row.name);
   res.json({ ok: true });
 });
 
@@ -629,6 +663,8 @@ router.post('/registrations', (req, res) => {
   });
 
   const row = db.prepare(`SELECT ${REG_COLS} FROM registrations WHERE user_id = ? AND id = ?`).get(req.user.id, result);
+  const svc = getService(req.user.id, row.serviceId);
+  logEvent(req.user.id, row.keyId, 'registration-added', `${svc.name} — ${KIND_LABELS[row.kind] || row.kind}`);
   res.json(row);
 });
 
@@ -636,18 +672,35 @@ router.put('/registrations/:id', (req, res) => {
   const id = intId(req.params.id);
   const existing = db.prepare(`SELECT ${REG_COLS} FROM registrations WHERE user_id = ? AND id = ?`).get(req.user.id, id);
   if (!existing) throw new ApiError(404, 'Registration not found');
-  const r = sanitizeRegistration(req.body || {});
-  db.prepare('UPDATE registrations SET kind = ?, account = ?, totp_app = ?, notes = ?, revoked = ? WHERE user_id = ? AND id = ?')
-    .run(r.kind, r.account, r.totpApp, r.notes, r.revoked, req.user.id, id);
+  const body = req.body || {};
+  const r = sanitizeRegistration(body);
+  let newKeyId = existing.keyId;
+  if (body.keyId !== undefined && intId(body.keyId) !== existing.keyId) {
+    newKeyId = intId(body.keyId);
+    getKey(req.user.id, newKeyId);
+  }
+  db.prepare('UPDATE registrations SET key_id = ?, kind = ?, account = ?, totp_app = ?, notes = ?, revoked = ? WHERE user_id = ? AND id = ?')
+    .run(newKeyId, r.kind, r.account, r.totpApp, r.notes, r.revoked, req.user.id, id);
+  const svc = db.prepare('SELECT name FROM services WHERE user_id = ? AND id = ?').get(req.user.id, existing.serviceId);
+  const svcName = svc ? svc.name : '(deleted service)';
+  if (newKeyId !== existing.keyId) {
+    logEvent(req.user.id, existing.keyId, 'registration-removed', `${svcName} — moved to another key`);
+    logEvent(req.user.id, newKeyId, 'registration-added', `${svcName} — moved here`);
+  }
+  if (!!r.revoked !== !!existing.revoked) {
+    logEvent(req.user.id, newKeyId, r.revoked ? 'revoked' : 'unrevoked', `${svcName} ${r.revoked ? 'revoked at the service' : 'marked active again'}`);
+  }
   const row = db.prepare(`SELECT ${REG_COLS} FROM registrations WHERE user_id = ? AND id = ?`).get(req.user.id, id);
   res.json(row);
 });
 
 router.delete('/registrations/:id', (req, res) => {
   const id = intId(req.params.id);
-  const existing = db.prepare('SELECT id FROM registrations WHERE user_id = ? AND id = ?').get(req.user.id, id);
+  const existing = db.prepare(`SELECT ${REG_COLS} FROM registrations WHERE user_id = ? AND id = ?`).get(req.user.id, id);
   if (!existing) throw new ApiError(404, 'Registration not found');
+  const svc = db.prepare('SELECT name FROM services WHERE user_id = ? AND id = ?').get(req.user.id, existing.serviceId);
   db.prepare('DELETE FROM registrations WHERE user_id = ? AND id = ?').run(req.user.id, id);
+  logEvent(req.user.id, existing.keyId, 'registration-removed', svc ? svc.name : '(deleted service)');
   res.json({ ok: true });
 });
 
@@ -701,13 +754,16 @@ router.post('/import', (req, res) => {
       const credId = typeof raw.credentialId === 'string' && /^[A-Za-z0-9_-]{0,1024}$/.test(raw.credentialId) ? raw.credentialId : '';
       const pem = typeof raw.publicKeyPem === 'string' && raw.publicKeyPem.startsWith('-----BEGIN PUBLIC KEY-----') && raw.publicKeyPem.length < 4200 ? raw.publicKeyPem : '';
       const alg = [-7, -257, -8].includes(Number(raw.credentialAlg)) ? Number(raw.credentialAlg) : -7;
+      const verifiedAt = typeof raw.verifiedAt === 'string' ? raw.verifiedAt.slice(0, 40) : '';
       const info = db.prepare(`
         INSERT INTO keys (user_id, name, vendor, model, serial, color, form_factor, status, purchased_at, notes,
-          image, credential_id, public_key, credential_alg, secret)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          image, credential_id, public_key, credential_alg, secret, verified_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(uid, k.name, k.vendor, k.model, k.serial, k.color, k.formFactor, k.status, k.purchasedAt, k.notes,
-        k.image, credId, credId ? pem : '', alg, secret);
-      keyIds.set(raw.id, Number(info.lastInsertRowid));
+        k.image, credId, credId ? pem : '', alg, secret, verifiedAt);
+      const newId = Number(info.lastInsertRowid);
+      logEvent(uid, newId, 'created', 'Restored from backup import');
+      keyIds.set(raw.id, newId);
     }
 
     const serviceIds = new Map();

@@ -6,6 +6,8 @@
   <title>Keeyo — hardware key manager</title>
   <meta name="description" content="Self-hosted inventory for your hardware security keys.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#eae5d8">
   <link rel="stylesheet" href="styles.css">
   <script src="theme-init.js"></script>
 </head>
@@ -22,6 +24,8 @@
   </div>
   <div id="modal-root"></div>
   <div id="toast-root" aria-live="polite"></div>
+  <div id="print-root"></div>
+  <script src="vendor/qrcode.js"></script>
   <script src="models.js"></script>
   <script src="aaguids.js"></script>
   <script src="app.js"></script>
