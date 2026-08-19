@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Keeyo — self-hosted hardware security key inventory</title>
+  <meta name="description" content="Keeyo is a self-hosted register for your hardware security keys: track which key holds which passkey, 2FA registration and TOTP.">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html"><img src="assets/logo.svg" alt="Keeyo">
+    <span><b>KEEYO</b><small>Equipment register</small></span></a>
+  <nav class="nav">
+    <a href="index.html" class="on">Overview</a>
+    <a href="install.html">Install</a>
+    <a href="guide.html">Guide</a>
+    <a href="security.html">Security</a>
+    <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  </nav>
+</header>
+
+<main class="page">
+  <p class="eyebrow">Self-hosted · Docker · Zero build</p>
+  <h1>Know what lives<br>on every key.</h1>
+  <p class="lead">You bought a YubiKey. Then two Token2 keys. Now nobody on earth knows which key holds the GitHub passkey. Keeyo is a small, private register for your hardware security keys — every physical key gets a tag, and every tag lists exactly what's on it.</p>
+
+  <div class="btn-row">
+    <a class="btn primary" href="install.html">Quick start →</a>
+    <a class="btn" href="https://github.com/ans-ib/keeyo">Source on GitHub</a>
+  </div>
+
+  <img class="hero-img" src="assets/preview.svg" alt="The Keeyo key register: asset-tag cards for each physical key">
+
+  <h2>What it does</h2>
+  <div class="cards">
+    <div class="card"><span class="tag">Inventory</span>
+      <h3>Asset-tag register</h3>
+      <p>Every key is a tag: number, color strip, status stamp (active / backup / lost / retired), schematic artwork or your own photo, and a per-key logbook of everything that ever happened to it.</p></div>
+    <div class="card"><span class="tag">WebAuthn</span>
+      <h3>Scan to identify</h3>
+      <p>Plug a key in, touch it, and Keeyo reads its model fingerprint from the live FIDO registry — or tells you exactly which of your registered keys it is. Several keys plugged in at once? The one you touch answers.</p></div>
+    <div class="card"><span class="tag">Coverage</span>
+      <h3>Backup warnings</h3>
+      <p>See every service from the key's side or every key from the service's side. Services relying on a single key get flagged — and the warning is a button that registers a backup in two clicks.</p></div>
+    <div class="card"><span class="tag">Incident</span>
+      <h3>Lost-key checklist</h3>
+      <p>Mark a key lost and Keeyo turns its registrations into a revocation checklist, nagging the dashboard until every service that still trusts the key has been cleaned up.</p></div>
+    <div class="card"><span class="tag">Possession</span>
+      <h3>Tap-to-reveal notes</h3>
+      <p>Store a key's PIN as a secret note that is only revealed after physically tapping that exact key — challenge–response, verified server-side. A stolen session alone can't read it.</p></div>
+    <div class="card"><span class="tag">2FA</span>
+      <h3>Protects itself, too</h3>
+      <p>Enroll sign-in security keys and Keeyo requires password <b>and</b> key tap to log in. Print physical asset tags with barcode + QR, export CSV, install it as a PWA.</p></div>
+  </div>
+
+  <div class="note ok"><span>🔒</span><span><b>Metadata only.</b> Keeyo stores names and notes — never TOTP seeds, private keys or other secrets. Everything sensitive stays on your hardware keys where it belongs.</span></div>
+
+  <h2>Quick start</h2>
+  <pre><code>docker run -d --name keeyo \
+  -p 5390:5390 \
+  -v keeyo-data:/data \
+  --restart unless-stopped \
+  ghcr.io/ans-ib/keeyo:latest</code></pre>
+  <p>Open <code>http://localhost:5390</code>, create the admin account, register your first key. Full options — Docker Compose, bare Node, reverse proxy, every environment variable — are on the <a href="install.html">install page</a>.</p>
+
+  <h2>Why self-hosted</h2>
+  <p>An inventory of your security keys is a map of your most important accounts. It shouldn't live in someone else's cloud. Keeyo is a single tiny container — Node.js, Express and SQLite, one npm dependency, no build step — and its only outbound request is the FIDO device-registry refresh, which you can turn off with one variable.</p>
+</main>
+
+<footer class="footer">
+  <span>KEEYO · EQUIPMENT REGISTER</span>
+  <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  <a href="https://github.com/ans-ib/keeyo/blob/main/SECURITY.md">Security policy</a>
+  <span>AGPL-3.0</span>
+</footer>
+
+</body>
+</html>

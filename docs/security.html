@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security — Keeyo</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html"><img src="assets/logo.svg" alt="Keeyo">
+    <span><b>KEEYO</b><small>Equipment register</small></span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="install.html">Install</a>
+    <a href="guide.html">Guide</a>
+    <a href="security.html" class="on">Security</a>
+    <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  </nav>
+</header>
+
+<main class="page">
+  <p class="eyebrow">Form K-SEC · Security model</p>
+  <h1>Security</h1>
+  <p class="lead">What Keeyo protects, how, and — just as important — what it deliberately doesn't.</p>
+
+  <h2>Data model: metadata only</h2>
+  <p>Keeyo stores <b>names and notes</b>: which key is registered where, what it's called, when it was tested. It never stores TOTP seeds, private keys, or recovery codes. The single exception is the optional per-key <i>secret note</i>, which is explicitly opt-in and explained below.</p>
+
+  <h2>Authentication</h2>
+  <ul>
+    <li>Passwords hashed with <b>scrypt</b> (per-user salt); sessions are random 256-bit server-side tokens in <code>httpOnly SameSite=Lax</code> cookies.</li>
+    <li>Optional <b>security-key second factor</b>: WebAuthn assertions verified fully server-side — challenge, origin, RP ID hash, user-presence flag, and signature against the enrolled public key.</li>
+    <li>Login rate limiting that ignores spoofable <code>X-Forwarded-For</code> headers unless <code>TRUST_PROXY=1</code> is deliberately set.</li>
+    <li>Changing your password signs out every other session.</li>
+  </ul>
+
+  <h2>Hardening</h2>
+  <ul>
+    <li>Strict <b>Content-Security-Policy</b> with no inline scripts, plus <code>frame-ancestors 'none'</code>, <code>nosniff</code> and <code>Referrer-Policy: no-referrer</code>.</li>
+    <li>All SQL parameterized; all user content HTML-escaped on render.</li>
+    <li>File attachments are always served as downloads with <code>nosniff</code>, so an uploaded HTML file can never execute in Keeyo's origin.</li>
+    <li>One npm dependency (Express), no build chain, Docker image runs as a non-root user.</li>
+  </ul>
+
+  <h2>Tap-to-reveal secret notes</h2>
+  <p>When a key is scanned, Keeyo keeps the public half of a throwaway WebAuthn credential as a <i>pairing</i>. Revealing the key's secret note runs a challenge–response against that pairing: single-use challenge, and the server verifies origin, RP ID, user presence and the signature before releasing the note. Swapping a key's pairing while a note exists is refused — the note must be cleared or replaced first, so a hijacked session can destroy the note but never read it.</p>
+
+  <h2>Honest limitations</h2>
+  <div class="note danger"><span>⚠</span><span><b>Read these before trusting Keeyo with anything.</b></span></div>
+  <ul>
+    <li>Secret notes are stored <b>unencrypted</b> in the SQLite file, and JSON exports include them. The possession check protects the API — the host and your backups are yours to protect.</li>
+    <li>TLS is delegated to your reverse proxy. Over plain HTTP on a LAN, session cookies travel unencrypted and all WebAuthn features disable themselves.</li>
+    <li>The FIDO metadata blob's JWT signature is not verified — it only supplies display names, never security decisions.</li>
+    <li><code>KEEYO_DISABLE_MFA</code> and the password-reset script are deliberate escape hatches: anyone with shell access to your server owns your Keeyo. That's the nature of self-hosting.</li>
+  </ul>
+
+  <h2>Outbound traffic</h2>
+  <p>The server makes exactly one kind of outbound request: refreshing the device registry (FIDO Alliance MDS + a community list) every few days. Set <code>KEEYO_OFFLINE=1</code> and it makes none. In the browser, the optional favicon icon mode loads icons from DuckDuckGo — skip it and the app makes zero external requests.</p>
+
+  <h2>Reporting vulnerabilities</h2>
+  <p>Please use GitHub's private <b>Report a Vulnerability</b> flow — details, scope and expectations are in the <a href="https://github.com/ans-ib/keeyo/blob/main/SECURITY.md">security policy</a>. Verified reports about authentication, cross-user access, injection, or bypasses of the WebAuthn possession checks are very welcome.</p>
+</main>
+
+<footer class="footer">
+  <span>KEEYO · EQUIPMENT REGISTER</span>
+  <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  <a href="https://github.com/ans-ib/keeyo/blob/main/SECURITY.md">Security policy</a>
+  <span>AGPL-3.0</span>
+</footer>
+
+</body>
+</html>

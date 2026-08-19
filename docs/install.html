@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install — Keeyo</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html"><img src="assets/logo.svg" alt="Keeyo">
+    <span><b>KEEYO</b><small>Equipment register</small></span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="install.html" class="on">Install</a>
+    <a href="guide.html">Guide</a>
+    <a href="security.html">Security</a>
+    <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  </nav>
+</header>
+
+<main class="page">
+  <p class="eyebrow">Form K-00 · Installation</p>
+  <h1>Install</h1>
+  <p class="lead">One container, one volume, one port. All data lives in a single SQLite file.</p>
+
+  <h2>Docker (recommended)</h2>
+  <pre><code>docker run -d --name keeyo \
+  -p 5390:5390 \
+  -v keeyo-data:/data \
+  --restart unless-stopped \
+  ghcr.io/ans-ib/keeyo:latest</code></pre>
+
+  <h3>Docker Compose</h3>
+  <pre><code>services:
+  keeyo:
+    image: ghcr.io/ans-ib/keeyo:latest
+    container_name: keeyo
+    restart: unless-stopped
+    ports:
+      - "5390:5390"
+    volumes:
+      - keeyo-data:/data
+
+volumes:
+  keeyo-data:</code></pre>
+  <p>Then open <code>http://localhost:5390</code>. Your first visit creates the admin account — there is no default password and no open registration.</p>
+
+  <h3>Build from source</h3>
+  <pre><code>git clone https://github.com/ans-ib/keeyo.git &amp;&amp; cd keeyo
+docker compose up -d</code></pre>
+
+  <h3>Without Docker</h3>
+  <p>Needs Node.js <b>22.13+</b> — Keeyo uses Node's built-in SQLite, so there are no native modules to compile.</p>
+  <pre><code>git clone https://github.com/ans-ib/keeyo.git &amp;&amp; cd keeyo
+npm install
+npm start          # http://localhost:5390, data in ./data</code></pre>
+
+  <h2>Configuration</h2>
+  <table>
+    <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>PORT</code></td><td><code>5390</code></td><td>Web server port.</td></tr>
+      <tr><td><code>DATA_DIR</code></td><td><code>/data</code></td><td>Where the SQLite database lives.</td></tr>
+      <tr><td><code>SESSION_TTL_DAYS</code></td><td><code>30</code></td><td>How long sign-ins last.</td></tr>
+      <tr><td><code>REGISTRY_REFRESH_DAYS</code></td><td><code>7</code></td><td>How often the FIDO device registry is re-fetched.</td></tr>
+      <tr><td><code>KEEYO_OFFLINE</code></td><td>unset</td><td>Set <code>1</code> to block all outbound requests (registry updates off).</td></tr>
+      <tr><td><code>TRUST_PROXY</code></td><td>unset</td><td>Set <code>1</code> <b>only behind a reverse proxy</b> so <code>X-Forwarded-*</code> headers are honored.</td></tr>
+      <tr><td><code>KEEYO_DISABLE_MFA</code></td><td>unset</td><td>Set <code>1</code> to skip the security-key second factor at login (lockout recovery).</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Reverse proxy &amp; HTTPS</h2>
+  <p>Keeyo speaks plain HTTP; put your reverse proxy in front for TLS and set <code>TRUST_PROXY=1</code>. Caddy example:</p>
+  <pre><code>keys.example.com {
+    reverse_proxy keeyo:5390
+}</code></pre>
+  <div class="note"><span>⚠</span><span><b>HTTPS matters more than usual here.</b> The WebAuthn features — key scanning, identification, tap-to-reveal, security-key login — only work from <code>localhost</code> or an HTTPS origin. On a plain-HTTP LAN IP they politely disable themselves. Browsers also refuse WebAuthn on raw IP addresses, so use a hostname.</span></div>
+
+  <h2>Backups</h2>
+  <ul>
+    <li><b>Everything:</b> back up the <code>/data</code> volume — the SQLite file is the complete state, file attachments included.</li>
+    <li><b>Portable:</b> Settings → Backup → <i>Export data</i> gives a JSON file with keys, services, registrations, catalog and secret notes (in plain text — guard it). Attachments are not in the JSON.</li>
+    <li><b>Human-readable:</b> CSV export and a printable register sheet exist for paper people.</li>
+  </ul>
+
+  <h2>Locked out?</h2>
+  <p>On the server (or in the container):</p>
+  <pre><code>docker exec -it keeyo node scripts/reset-password.js &lt;username&gt; &lt;new-password&gt;</code></pre>
+  <p>This resets the password, signs out all sessions and removes the account's sign-in security keys. Alternatively, start Keeyo once with <code>KEEYO_DISABLE_MFA=1</code> to skip the second factor.</p>
+</main>
+
+<footer class="footer">
+  <span>KEEYO · EQUIPMENT REGISTER</span>
+  <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  <a href="https://github.com/ans-ib/keeyo/blob/main/SECURITY.md">Security policy</a>
+  <span>AGPL-3.0</span>
+</footer>
+
+</body>
+</html>

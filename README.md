@@ -1,93 +1,91 @@
+<div align="center">
+
+<img src="docs/assets/logo.svg" width="130" alt="Keeyo logo">
+
 # Keeyo
 
-A self-hosted tracker for your hardware security keys.
+**The self-hosted equipment register for your hardware security keys.**
 
-If you're anything like me, you probably bought a YubiKey, got a couple of Token2 keys a bit later, and now you have absolutely no idea which key holds which passkey or which one has your GitHub TOTP. Keeyo is a small, private web app I put together to fix this. It gives every physical key a digital card, so you can easily track what lives on each one. 
+[![Version](https://img.shields.io/github/v/tag/ans-ib/keeyo?style=flat-square&label=version&color=d84315)](https://github.com/ans-ib/keeyo/tags)
+[![License](https://img.shields.io/github/license/ans-ib/keeyo?style=flat-square)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Status](https://img.shields.io/badge/status-early--release-orange?style=flat-square)](https://github.com/ans-ib/keeyo/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/ans-ib/keeyo/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/ans-ib/keeyo/actions)
+[![Container](https://img.shields.io/badge/ghcr.io-ans--ib%2Fkeeyo-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/ans-ib/keeyo/pkgs/container/keeyo)
+[![GitHub Stars](https://img.shields.io/github/stars/ans-ib/keeyo?style=flat-square)](https://github.com/ans-ib/keeyo/stargazers)
 
-To be super clear upfront: **this app only stores names and notes**. It does not store any secrets, TOTP seeds, or private keys. All the sensitive stuff stays on your hardware keys where it belongs.
+</div>
 
-## What it does
+If you're anything like me, you probably bought a YubiKey, got a couple of Token2 keys a bit later, and now you have absolutely no idea which key holds which passkey or which one has your GitHub TOTP. Keeyo fixes this: every physical key gets a digital asset tag, and every tag lists exactly what lives on it.
 
-*   **Visual inventory:** You get a grid showing all your keys. You can give them color tags, set the form factor (USB-C, nano, etc.), and mark them as active, backup, or lost.
-*   **Auto-detects keys:** If you plug a key in and tap it, Keeyo reads its fingerprint via WebAuthn and automatically fills in the vendor and model. It pulls this from the official FIDO registry and community lists, which update automatically so new keys are recognized. If a key isn't in the registry, you just name it once and the app remembers it for next time. (Note: Because of browser WebAuthn rules, you have to serve the app over HTTPS or localhost for this to work). 
-*   **"Which key is this?":** Found a random key in a drawer? Hit the identify button, plug it in, touch it, and Keeyo tells you exactly which record it is — even if it's one you marked as lost. You can have several keys plugged in at the same time; the one you physically touch is the one that answers.
-*   **Track what goes where:** Look at a specific key to see every passkey or 2FA code on it. You can also do a reverse lookup: pick a service and see exactly which keys give you access to it.
-*   **Backup warnings:** The dashboard will give you a heads-up if a service only has one usable key attached to it, so you know where you need to register a spare.
-*   **Lost key checklist:** If you lose a key, mark it as lost. Keeyo generates a checklist of every service that still trusts it and leaves a warning on your dashboard until you've revoked access everywhere.
-*   **Locked notes:** You can store a secret note for a key (like its PIN), but set it up so the note only reveals itself if you physically tap that exact key. 
-*   **App security:** You can protect your Keeyo account by requiring a hardware key tap along with your password to sign in.
-*   **Health check-ins:** Backup keys tend to rot in drawers. Hit "Tested" whenever you confirm a key still works, and the dashboard will nudge you about any key that hasn't been checked in 6 months.
-*   **Logbook:** Every key carries an append-only history — when it was registered, what was added or removed, status changes, tests. Like a real equipment ledger.
-*   **Print it:** Print a physical asset tag for any key (with its number, barcode and a QR code back to its page) to stick on the keychain, or print the whole register as one inventory sheet. There's a CSV export too.
-*   **Fast entry:** One-tap buttons for common services (GitHub, Google, ...), an "add another" mode for logging many services in a row, and deletes come with a 5-second Undo instead of nagging confirmations. Press `/` to search and `N` for a new key.
-*   **Installable:** It's a PWA — add it to your phone's home screen and the register stays readable even offline.
-*   **The basics:** It has built-in search, filtering and sorting, multi-user support, a dark mode, and a simple one-click JSON export for backups. 
+To be super clear upfront: **this app only stores names and notes.** No TOTP seeds, no private keys, no secrets — all the sensitive stuff stays on your hardware keys where it belongs.
 
-## Getting started (Docker)
+## 📚 Documentation
 
-The easiest way to get it running is with Docker Compose. 
+Full documentation is available at **[ans-ib.github.io/keeyo](https://ans-ib.github.io/keeyo/)**:
 
-```bash
-git clone https://github.com/ans-ib/keeyo.git && cd keeyo
-docker compose up -d
-```
+- [Overview](https://ans-ib.github.io/keeyo/) — what it does and why
+- [Installation](https://ans-ib.github.io/keeyo/install.html) — Docker, Compose, bare Node, reverse proxy, every env var
+- [User guide](https://ans-ib.github.io/keeyo/guide.html) — scanning, coverage, lost keys, secret notes, printing
+- [Security model](https://ans-ib.github.io/keeyo/security.html) — what's protected, how, and the honest limits
 
-Once it's up, open `http://localhost:5390`. You'll create the admin account on your first visit and can start adding keys. 
+<div align="center">
+<img src="docs/assets/preview.svg" width="85%" alt="The Keeyo key register — asset-tag cards for each physical key">
+</div>
 
-All your data lives in a single SQLite database in the `keeyo-data` volume. You can back it up by copying that volume, or just use the export button in the app settings.
-
-### Without compose
+## 🚀 Quick start
 
 ```bash
-docker build -t keeyo .
-docker run -d --name keeyo -p 5390:5390 -v keeyo-data:/data --restart unless-stopped keeyo
+docker run -d --name keeyo \
+  -p 5390:5390 \
+  -v keeyo-data:/data \
+  --restart unless-stopped \
+  ghcr.io/ans-ib/keeyo:latest
 ```
 
-### Running without Docker
+Open `http://localhost:5390` — your first visit creates the admin account. Prefer Compose or bare Node? See the [install docs](https://ans-ib.github.io/keeyo/install.html).
 
-If you don't want to use Docker, you just need Node.js 22.13 or newer. The app uses Node's built-in SQLite, so there are no messy native modules to deal with.
+```yaml
+services:
+  keeyo:
+    image: ghcr.io/ans-ib/keeyo:latest
+    container_name: keeyo
+    restart: unless-stopped
+    ports:
+      - "5390:5390"
+    volumes:
+      - keeyo-data:/data
 
-```bash
-npm install
-npm start
+volumes:
+  keeyo-data:
 ```
 
-It will run on `http://localhost:5390`, and save the database to the `./data` folder.
+## ✨ Key features
 
-## Configuration
+- **Visual inventory** — a grid of asset-tag cards: color strips, tag numbers, status stamps (active / backup / lost / retired), schematic key artwork or your own photos.
+- **Scan to detect** — plug a key in, tap it, and Keeyo reads its fingerprint via WebAuthn and fills in vendor/model from the live FIDO registry (auto-updating, so new keys are recognized without app updates).
+- **"Which key is this?"** — found a random key in a drawer? Identify it with one tap. Several keys plugged in at once is fine: the one you touch answers.
+- **Track what goes where** — every passkey, 2FA registration and TOTP per key, plus the reverse lookup per service.
+- **Backup warnings** — services relying on a single key get flagged, and the warning is a button that registers a backup in two clicks.
+- **Lost-key checklist** — mark a key lost and get a revocation checklist of every service that still trusts it.
+- **Tap-to-reveal secret notes** — store a key's PIN so it's revealed only by physically tapping that exact key (verified server-side).
+- **Sign-in 2FA** — protect Keeyo itself with a hardware key on top of your password.
+- **Health check-ins & logbook** — "tested" stamps with 6-month staleness nudges, and an append-only per-key history.
+- **Print it** — physical asset tags (barcode + QR) and a full printable register sheet; CSV export too.
+- **The basics** — search, filters, keyboard shortcuts, undo on deletes, multi-user, dark mode, JSON backups, installable PWA with offline reading.
 
-You can tweak a few things using environment variables if you need to:
+## 🔒 Security
 
-*   `PORT`: Changes the web server port (default is 5390).
-*   `DATA_DIR`: Changes where the SQLite database is saved (default is `/data`).
-*   `SESSION_TTL_DAYS`: How long you stay logged in (default is 30 days).
-*   `REGISTRY_REFRESH_DAYS`: How often the app checks for new key models (default is 7 days).
-*   `KEEYO_OFFLINE`: Set this to `1` if you want to block all external network requests, like the registry updates.
-*   `TRUST_PROXY`: Set this to `1` if you are running behind a reverse proxy so rate limiting and HTTPS detection work correctly.
-*   `KEEYO_DISABLE_MFA`: Set this to `1` if you ever get locked out and need to bypass the security key check at login.
+Scrypt-hashed passwords, server-side sessions, strict CSP, full server-side WebAuthn verification, and spoof-proof rate limiting. Read the [security model](https://ans-ib.github.io/keeyo/security.html) — including the honest limitations — and see [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
-Just a note on outbound traffic: the only thing the server reaches out to the internet for is the device registry list. It downloads the FIDO list, but doesn't verify the cryptographic signature on the file since we are just using it to get the display names of the keys, not for actual security decisions.
+## 🛠 Tech
 
-## Reverse proxy and HTTPS
+Node.js + Express + SQLite (Node's built-in — zero native modules), vanilla JS frontend, no build step, one tiny container. The server's only outbound request is the FIDO device-registry refresh, and `KEEYO_OFFLINE=1` turns even that off.
 
-Keeyo just runs plain HTTP. You are meant to put it behind a reverse proxy like Caddy, nginx, or Traefik to handle HTTPS. It automatically picks up standard proxy headers and secures the session cookies when it detects HTTPS.
+## 🤝 Contributing
 
-Here is a quick example if you use Caddy:
+Issues and PRs are welcome — especially additions to the device catalog (`public/models.js`) and real-world testing with keys I don't own. Run the test suite with `npm test`.
 
-```caddyfile
-keys.example.com {
-    reverse_proxy keeyo:5390
-}
-```
+## 📄 License
 
-## A quick note on privacy
-
-The app is built to be private. Passwords are hashed properly using scrypt, and sessions are kept strictly server-side.
-
-The only optional feature that makes an outside network request is if you choose the "site favicon" setting for your services. That feature loads icons from DuckDuckGo directly in your browser. If you prefer zero external requests, just stick to the text-based letter avatars.
-
-## Technical details
-
-Under the hood, it is just Node.js, Express, and SQLite. The frontend is plain vanilla JavaScript with no complicated build steps, packed into one tiny container.
-
-License: AGPL-3.0
+[AGPL-3.0](LICENSE)

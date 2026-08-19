@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 430" font-family="Consolas, Menlo, 'DejaVu Sans Mono', monospace">
+  <defs>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#c8c1a8"/>
+    </pattern>
+    <pattern id="grid" width="13" height="13" patternUnits="userSpaceOnUse">
+      <path d="M13 0H0V13" fill="none" stroke="#c8c1a8" stroke-width="0.7"/>
+    </pattern>
+  </defs>
+
+  <rect width="900" height="430" fill="#eae5d8"/>
+  <rect width="900" height="430" fill="url(#dots)"/>
+
+  <!-- header -->
+  <text x="40" y="52" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="bold" fill="#1c1a12" letter-spacing="1">KEY REGISTER</text>
+  <rect x="248" y="32" width="86" height="24" fill="none" stroke="#c8c1a8" stroke-width="1.5"/>
+  <text x="291" y="48" font-size="11" fill="#8b8468" text-anchor="middle">03 ON FILE</text>
+  <rect x="676" y="28" width="184" height="32" fill="#d84315" stroke="#1c1a12" stroke-width="2"/>
+  <rect x="681" y="33" width="184" height="32" fill="none" stroke="#1c1a12" stroke-width="2"/>
+  <text x="768" y="49" font-size="12" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="1">+ REGISTER KEY</text>
+
+  <!-- card 1 -->
+  <g>
+    <rect x="46" y="96" width="258" height="296" fill="#1c1a12"/>
+    <rect x="40" y="90" width="258" height="296" fill="#f7f4ea" stroke="#1c1a12" stroke-width="2"/>
+    <rect x="41.5" y="91.5" width="255" height="34" fill="#60a5fa" stroke="#1c1a12" stroke-width="1.5"/>
+    <circle cx="58" cy="108" r="6" fill="#eae5d8" stroke="#1c1a12" stroke-width="2.5"/>
+    <rect x="72" y="99" width="60" height="19" fill="#f7f4ea" stroke="#1c1a12" stroke-width="1.5"/>
+    <text x="102" y="112" font-size="10" font-weight="bold" fill="#1c1a12" text-anchor="middle">KY-001</text>
+    <rect x="222" y="99" width="62" height="18" fill="#f7f4ea" stroke="#2a6e3f" stroke-width="1.5" transform="rotate(-2 253 108)"/>
+    <text x="253" y="112" font-size="9" font-weight="bold" fill="#2a6e3f" text-anchor="middle" transform="rotate(-2 253 108)">ACTIVE</text>
+    <rect x="41.5" y="126" width="255" height="110" fill="#f2eee3"/>
+    <rect x="41.5" y="126" width="255" height="110" fill="url(#grid)"/>
+    <!-- schematic usb-c key -->
+    <g transform="translate(169,131)">
+      <rect x="-19" y="0" width="38" height="72" rx="7" fill="#f7f4ea" stroke="#1c1a12" stroke-width="2.2"/>
+      <line x1="0" y1="6" x2="0" y2="68" stroke="#1c1a12" stroke-width="1" stroke-dasharray="3 4" opacity="0.3"/>
+      <circle cx="0" cy="13" r="6" fill="#eae5d8" stroke="#60a5fa" stroke-width="3"/>
+      <circle cx="0" cy="42" r="10" fill="none" stroke="#a87b23" stroke-width="2.5"/>
+      <circle cx="0" cy="42" r="3.5" fill="#a87b23"/>
+      <rect x="-8" y="72" width="16" height="22" rx="7" fill="#e3ddcc" stroke="#1c1a12" stroke-width="2"/>
+      <path d="M23 8 a9 9 0 0 1 7 9 M23 1 a16 16 0 0 1 14 16" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <text x="56" y="262" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="bold" fill="#1c1a12">Daily driver</text>
+    <text x="56" y="280" font-size="10" fill="#8b8468" letter-spacing="1">YUBICO / YUBIKEY 5C NFC</text>
+    <rect x="56" y="294" width="86" height="18" fill="rgba(216,67,21,0.1)" stroke="#d84315"/>
+    <text x="99" y="306" font-size="9" fill="#d84315" text-anchor="middle">9 PASSKEYS</text>
+    <rect x="148" y="294" width="56" height="18" fill="rgba(212,168,0,0.14)" stroke="#8a6a00"/>
+    <text x="176" y="306" font-size="9" fill="#8a6a00" text-anchor="middle">3 TOTP</text>
+    <line x1="56" y1="334" x2="282" y2="334" stroke="#c8c1a8" stroke-width="1" stroke-dasharray="4 4"/>
+    <g fill="#57523f" transform="translate(56,348)">
+      <rect width="3" height="18"/><rect x="5" width="1.5" height="18"/><rect x="9" width="4" height="18"/><rect x="16" width="1.5" height="18"/><rect x="20" width="2.5" height="18"/><rect x="25" width="5" height="18"/><rect x="33" width="1.5" height="18"/><rect x="37" width="3" height="18"/><rect x="43" width="1.5" height="18"/><rect x="47" width="4" height="18"/><rect x="54" width="2.5" height="18"/><rect x="59" width="1.5" height="18"/><rect x="63" width="5" height="18"/>
+    </g>
+    <text x="282" y="362" font-size="9" fill="#8b8468" text-anchor="end" letter-spacing="1.5">YUBICO</text>
+  </g>
+
+  <!-- card 2 -->
+  <g>
+    <rect x="326" y="96" width="258" height="296" fill="#1c1a12"/>
+    <rect x="320" y="90" width="258" height="296" fill="#f7f4ea" stroke="#1c1a12" stroke-width="2"/>
+    <rect x="321.5" y="91.5" width="255" height="34" fill="#4ade80" stroke="#1c1a12" stroke-width="1.5"/>
+    <circle cx="338" cy="108" r="6" fill="#eae5d8" stroke="#1c1a12" stroke-width="2.5"/>
+    <rect x="352" y="99" width="60" height="19" fill="#f7f4ea" stroke="#1c1a12" stroke-width="1.5"/>
+    <text x="382" y="112" font-size="10" font-weight="bold" fill="#1c1a12" text-anchor="middle">KY-002</text>
+    <rect x="500" y="99" width="64" height="18" fill="#f7f4ea" stroke="#1a56a7" stroke-width="1.5" transform="rotate(-2 532 108)"/>
+    <text x="532" y="112" font-size="9" font-weight="bold" fill="#1a56a7" text-anchor="middle" transform="rotate(-2 532 108)">BACKUP</text>
+    <rect x="321.5" y="126" width="255" height="110" fill="#f2eee3"/>
+    <rect x="321.5" y="126" width="255" height="110" fill="url(#grid)"/>
+    <!-- schematic usb-a key -->
+    <g transform="translate(449,131)">
+      <rect x="-19" y="0" width="38" height="72" rx="7" fill="#f7f4ea" stroke="#1c1a12" stroke-width="2.2"/>
+      <line x1="0" y1="6" x2="0" y2="68" stroke="#1c1a12" stroke-width="1" stroke-dasharray="3 4" opacity="0.3"/>
+      <circle cx="0" cy="13" r="6" fill="#eae5d8" stroke="#4ade80" stroke-width="3"/>
+      <circle cx="0" cy="42" r="10" fill="none" stroke="#a87b23" stroke-width="2.5"/>
+      <circle cx="0" cy="42" r="3.5" fill="#a87b23"/>
+      <rect x="-11" y="72" width="22" height="24" fill="#e3ddcc" stroke="#1c1a12" stroke-width="2"/>
+      <rect x="-7" y="78" width="4.5" height="5" fill="none" stroke="#1c1a12" stroke-width="1.3"/>
+      <rect x="2.5" y="78" width="4.5" height="5" fill="none" stroke="#1c1a12" stroke-width="1.3"/>
+    </g>
+    <text x="336" y="262" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="bold" fill="#1c1a12">Desk backup</text>
+    <text x="336" y="280" font-size="10" fill="#8b8468" letter-spacing="1">TOKEN2 / PIN+ RELEASE2</text>
+    <rect x="336" y="294" width="86" height="18" fill="rgba(216,67,21,0.1)" stroke="#d84315"/>
+    <text x="379" y="306" font-size="9" fill="#d84315" text-anchor="middle">7 PASSKEYS</text>
+    <rect x="428" y="294" width="50" height="18" fill="rgba(26,86,167,0.1)" stroke="#1a56a7"/>
+    <text x="453" y="306" font-size="9" fill="#1a56a7" text-anchor="middle">2 2FA</text>
+    <line x1="336" y1="334" x2="562" y2="334" stroke="#c8c1a8" stroke-width="1" stroke-dasharray="4 4"/>
+    <g fill="#57523f" transform="translate(336,348)">
+      <rect width="4" height="18"/><rect x="6" width="1.5" height="18"/><rect x="10" width="2.5" height="18"/><rect x="15" width="5" height="18"/><rect x="23" width="1.5" height="18"/><rect x="27" width="3" height="18"/><rect x="33" width="1.5" height="18"/><rect x="37" width="4" height="18"/><rect x="44" width="2.5" height="18"/><rect x="49" width="1.5" height="18"/><rect x="53" width="5" height="18"/><rect x="61" width="3" height="18"/>
+    </g>
+    <text x="562" y="362" font-size="9" fill="#8b8468" text-anchor="end" letter-spacing="1.5">TOKEN2</text>
+  </g>
+
+  <!-- card 3: lost -->
+  <g opacity="0.9">
+    <rect x="606" y="96" width="258" height="296" fill="#1c1a12"/>
+    <rect x="600" y="90" width="258" height="296" fill="#f7f4ea" stroke="#1c1a12" stroke-width="2"/>
+    <rect x="601.5" y="91.5" width="255" height="34" fill="#f472b6" stroke="#1c1a12" stroke-width="1.5"/>
+    <circle cx="618" cy="108" r="6" fill="#eae5d8" stroke="#1c1a12" stroke-width="2.5"/>
+    <rect x="632" y="99" width="60" height="19" fill="#f7f4ea" stroke="#1c1a12" stroke-width="1.5"/>
+    <text x="662" y="112" font-size="10" font-weight="bold" fill="#1c1a12" text-anchor="middle">KY-003</text>
+    <rect x="786" y="99" width="52" height="18" fill="rgba(179,38,30,0.1)" stroke="#b3261e" stroke-width="1.5" transform="rotate(-2 812 108)"/>
+    <text x="812" y="112" font-size="9" font-weight="bold" fill="#b3261e" text-anchor="middle" transform="rotate(-2 812 108)">LOST</text>
+    <rect x="601.5" y="126" width="255" height="110" fill="#f2eee3"/>
+    <rect x="601.5" y="126" width="255" height="110" fill="url(#grid)"/>
+    <g transform="translate(729,131)" opacity="0.55">
+      <rect x="-19" y="0" width="38" height="72" rx="7" fill="#f7f4ea" stroke="#1c1a12" stroke-width="2.2"/>
+      <circle cx="0" cy="13" r="6" fill="#eae5d8" stroke="#f472b6" stroke-width="3"/>
+      <circle cx="0" cy="42" r="10" fill="none" stroke="#a87b23" stroke-width="2.5"/>
+      <circle cx="0" cy="42" r="3.5" fill="#a87b23"/>
+      <rect x="-8" y="72" width="16" height="22" rx="7" fill="#e3ddcc" stroke="#1c1a12" stroke-width="2"/>
+    </g>
+    <text x="616" y="262" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="bold" fill="#1c1a12">Travel key</text>
+    <text x="616" y="280" font-size="10" fill="#8b8468" letter-spacing="1">YUBICO / YUBIKEY 5 NFC</text>
+    <rect x="616" y="294" width="148" height="18" fill="rgba(179,38,30,0.1)" stroke="#b3261e"/>
+    <text x="690" y="306" font-size="9" fill="#b3261e" text-anchor="middle">4 STILL TO REVOKE</text>
+    <line x1="616" y1="334" x2="842" y2="334" stroke="#c8c1a8" stroke-width="1" stroke-dasharray="4 4"/>
+    <g fill="#57523f" transform="translate(616,348)">
+      <rect width="2.5" height="18"/><rect x="5" width="4" height="18"/><rect x="12" width="1.5" height="18"/><rect x="16" width="5" height="18"/><rect x="24" width="2.5" height="18"/><rect x="29" width="1.5" height="18"/><rect x="33" width="3" height="18"/><rect x="39" width="1.5" height="18"/><rect x="43" width="4" height="18"/><rect x="50" width="2.5" height="18"/><rect x="55" width="5" height="18"/>
+    </g>
+    <text x="842" y="362" font-size="9" fill="#8b8468" text-anchor="end" letter-spacing="1.5">YUBICO</text>
+  </g>
+
+  <!-- corner registration marks -->
+  <text x="12" y="20" font-size="13" fill="#8b8468">+</text>
+  <text x="880" y="422" font-size="13" fill="#8b8468">+</text>
+</svg>

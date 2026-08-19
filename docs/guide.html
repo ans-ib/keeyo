@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User guide — Keeyo</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html"><img src="assets/logo.svg" alt="Keeyo">
+    <span><b>KEEYO</b><small>Equipment register</small></span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="install.html">Install</a>
+    <a href="guide.html" class="on">Guide</a>
+    <a href="security.html">Security</a>
+    <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  </nav>
+</header>
+
+<main class="page">
+  <p class="eyebrow">Form K-99 · Operating manual</p>
+  <h1>User guide</h1>
+  <p class="lead">Everything the register can do, in the order you'll meet it.</p>
+
+  <h2>Registering a key</h2>
+  <ol class="steps">
+    <li><b>Scan it.</b> Hit <i>Register key</i> and the scan step opens. Plug the key into the machine you're browsing from and touch it when it blinks. Keeyo reads the model fingerprint (AAGUID), matches it against the live FIDO registry, and pre-fills vendor, model and form factor. Scanning also <b>pairs</b> the key, which unlocks identification and secret notes later. Nothing is written to the key and none of its passkey storage is used.</li>
+    <li><b>Or add it manually.</b> The small link below the scan button opens the plain form. Vendors, models, form factors and colors all accept custom entries — anything you type is remembered in your personal catalog (Settings → Catalog) for next time.</li>
+    <li><b>Pick the variant if asked.</b> Fingerprints identify a <i>series</i> — a YubiKey 5 NFC and 5C NFC share one — so when it's ambiguous, Keeyo narrows the model list and you pick the plug you're holding.</li>
+    <li><b>Give it a name and a color.</b> Name it for where it lives ("Desk drawer backup"), and match the color tag to a real sticker on the physical key. You can upload a photo instead of the schematic drawing.</li>
+  </ol>
+
+  <h2>Logging what's on a key</h2>
+  <p>Open a key's tag and add <b>sign-ins</b> (passkeys and 2FA registrations) and <b>TOTP codes</b>. The service picker searches your existing services, offers one-tap buttons for common ones (GitHub, Google, …) and creates new services inline — with automatic favicons. Tick <i>add another</i> to log a whole key's contents in one sitting.</p>
+  <p>Registrations can be edited, moved to another key, or removed — deletions come with a 5-second <b>Undo</b> instead of a confirmation dialog.</p>
+
+  <h2>Services &amp; backup coverage</h2>
+  <p>Settings → Services is the reverse lookup: every service, and colored squares for each key that covers it. Two warnings matter:</p>
+  <ul>
+    <li><b>no backup — add one</b>: only one usable key covers this service. The chip is a button — it opens a key picker and pre-fills the registration form.</li>
+    <li><b>not on any key — fix</b>: no usable key covers it at all (e.g. the only key is marked lost).</li>
+  </ul>
+  <p>The same warnings surface as a strip on the dashboard so gaps don't hide.</p>
+
+  <h2>Losing a key</h2>
+  <p>Set the key's status to <b>lost</b>. Its registrations become a <b>revocation checklist</b> — go to each service, remove the key there, and tick it off. The dashboard shows a hazard strip until the checklist is clean. If the key turns up later, the identify feature will recognize it and remind you it was marked lost.</p>
+
+  <h2>"Which key is this?"</h2>
+  <p>The identify button on the dashboard answers the question the whole app exists for. Plug in the mystery key, touch it, and Keeyo names the exact record — even several keys plugged in at once is fine, because <b>the key you physically touch is the one that answers</b>. Works for paired keys; unpaired ones fall back to a model read with candidate matches.</p>
+
+  <h2>Secret notes (tap to reveal)</h2>
+  <p>A paired key can hold one secret note — typically its PIN. The note is never shown in the app; revealing it requires tapping that exact physical key, and the server verifies the cryptographic response before releasing it. Setting or replacing the note is a normal edit; only <i>reading</i> it needs the key.</p>
+  <div class="note"><span>⚠</span><span>The note is stored unencrypted in the server's database file — the tap protects the API, not the disk. Don't store anything you can't afford to have on your own server.</span></div>
+
+  <h2>Health check-ins</h2>
+  <p>Backup keys rot in drawers. Whenever you actually use or test a key, press <b>Tested</b> on its page — the dashboard nudges you about any active or backup key that hasn't been confirmed working in six months.</p>
+
+  <h2>The logbook</h2>
+  <p>Every key keeps an append-only ledger: registered, paired, status changes, services added and removed, revocations, tests, files. It answers "when did I add this?" without you ever writing anything down.</p>
+
+  <h2>Printing &amp; exports</h2>
+  <ul>
+    <li><b>Asset tag</b> (key page → printer icon): a physical label with the key's name, tag number, barcode and a QR code linking back to its record. Stick it on the keychain.</li>
+    <li><b>Register sheet</b> (dashboard → Print): the whole inventory as one ledger table.</li>
+    <li><b>CSV</b> (Settings → Backup): the same data for spreadsheets.</li>
+  </ul>
+
+  <h2>Protecting Keeyo itself</h2>
+  <p>Settings → Account → <b>Sign-in security keys</b>: enroll one or more hardware keys and logging in requires your password <i>plus</i> a key tap. Enroll at least two so losing one never locks you out — and know the <a href="install.html">recovery paths</a>.</p>
+
+  <h2>Keyboard shortcuts</h2>
+  <table>
+    <thead><tr><th>Key</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>/</kbd></td><td>Focus the search box</td></tr>
+      <tr><td><kbd>N</kbd></td><td>Register a new key (dashboard)</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close the open dialog</td></tr>
+    </tbody>
+  </table>
+</main>
+
+<footer class="footer">
+  <span>KEEYO · EQUIPMENT REGISTER</span>
+  <a href="https://github.com/ans-ib/keeyo">GitHub</a>
+  <a href="https://github.com/ans-ib/keeyo/blob/main/SECURITY.md">Security policy</a>
+  <span>AGPL-3.0</span>
+</footer>
+
+</body>
+</html>
