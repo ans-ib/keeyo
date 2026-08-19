@@ -1665,17 +1665,30 @@ function serviceDetailModal(svcId) {
   if (!svc) return;
   const { regs, usable } = serviceCoverage(svcId);
 
-  const regRows = regs.map((r) => {
-    const k = keyById(r.keyId);
+  // One row per KEY (not per registration): a key holding both a passkey and
+  // a TOTP for this service shows once, with one chip per registration kind.
+  const byKey = new Map();
+  for (const r of regs) {
+    if (!byKey.has(r.keyId)) byKey.set(r.keyId, []);
+    byKey.get(r.keyId).push(r);
+  }
+  const regRows = [...byKey.entries()].map(([kid, keyRegs]) => {
+    const k = keyById(kid);
+    const chips = keyRegs.map((r) =>
+      `<span class="chip ${KIND_CHIP[r.kind]}">${KIND_LABEL[r.kind]}${r.revoked ? ' · revoked' : ''}</span>`).join(' ');
+    const subParts = [
+      ...new Set(keyRegs.map((r) => r.account).filter(Boolean)),
+      ...new Set(keyRegs.filter((r) => r.kind === 'totp' && r.totpApp).map((r) => `TOTP in ${r.totpApp}`)),
+    ];
     return `
       <div class="row">
         <span class="key-dot" style="background:${esc(k ? k.color : '#888')}">${esc(k ? k.name.charAt(0).toUpperCase() : '?')}</span>
         <div class="row-main">
           <div class="row-title">${esc(k ? k.name : '(deleted key)')}
-            <span class="chip ${KIND_CHIP[r.kind]}">${KIND_LABEL[r.kind]}</span>
+            ${chips}
             ${k && (k.status === 'lost' || k.status === 'retired') ? `<span class="status-badge status-${esc(k.status)}">${STATUS_LABEL[k.status]}</span>` : ''}
           </div>
-          ${r.account || r.totpApp ? `<div class="row-sub">${esc([r.account, r.kind === 'totp' && r.totpApp ? `in ${r.totpApp}` : ''].filter(Boolean).join(' · '))}</div>` : ''}
+          ${subParts.length ? `<div class="row-sub">${esc(subParts.join(' · '))}</div>` : ''}
         </div>
         ${k ? `<button type="button" class="btn btn-sm btn-ghost" data-goto="${k.id}">Open key</button>` : ''}
       </div>`;
@@ -2771,8 +2784,7 @@ function registrationModal({ key, reg = null, presetKind = null, presetService =
           input.parentElement.style.display = '';
           input.value = '';
           quickPicks.style.display = '';
-          input.focus();
-          renderList();
+          list.classList.remove('open');
         }
 
         function renderList() {
@@ -2781,7 +2793,8 @@ function registrationModal({ key, reg = null, presetKind = null, presetService =
           const exact = q && state.services.some((s) => s.name.toLowerCase() === q);
           list.innerHTML = [
             ...matches.map((s) => {
-              const n = regsForService(s.id).length;
+              // distinct keys, not registrations — a key with sign-in + TOTP counts once
+              const n = new Set(regsForService(s.id).map((r) => r.keyId)).size;
               return `<button type="button" class="combo-item" data-id="${s.id}">
                 ${serviceIconHTML(s, 'sm')}<span>${esc(s.name)}</span>
                 <span class="combo-sub">${n ? `on ${n} key${n > 1 ? 's' : ''}` : 'new here'}</span></button>`;
@@ -2796,14 +2809,22 @@ function registrationModal({ key, reg = null, presetKind = null, presetService =
             }));
         }
 
+        // Open only on deliberate interaction (typing or clicking the field) —
+        // never on the modal's automatic focus. Close on any click outside.
         input.addEventListener('input', renderList);
-        input.addEventListener('focus', renderList);
+        input.addEventListener('click', renderList);
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
             const first = $('.combo-item', list);
             if (first) first.click();
+          } else if (e.key === 'Escape' && list.classList.contains('open')) {
+            e.stopPropagation();
+            list.classList.remove('open');
           }
+        });
+        form.addEventListener('mousedown', (e) => {
+          if (!e.target.closest('.combo')) list.classList.remove('open');
         });
         $('#svc-clear', form).addEventListener('click', clearSelection);
 
@@ -2851,10 +2872,14 @@ function registrationModal({ key, reg = null, presetKind = null, presetService =
       } else {
         await api('/registrations', { body: payload });
         toast('Added to key');
+        // Refresh BEFORE resetting the picker, so the just-created service is
+        // in the list and can't be accidentally created again as a duplicate.
+        await refresh();
         if (form.addAnother && form.addAnother.checked) {
           form.keepOpen = true;
           if (form.resetForNext) form.resetForNext();
         }
+        return;
       }
       refresh();
     },

@@ -631,6 +631,8 @@ router.delete('/keys/:id', (req, res) => {
 
 router.post('/services', (req, res) => {
   const s = sanitizeService(req.body || {});
+  const dupe = db.prepare('SELECT id FROM services WHERE user_id = ? AND name = ? COLLATE NOCASE').get(req.user.id, s.name);
+  if (dupe) throw new ApiError(400, `A service named "${s.name}" already exists`);
   const info = db.prepare('INSERT INTO services (user_id, name, url, icon, notes) VALUES (?, ?, ?, ?, ?)')
     .run(req.user.id, s.name, s.url, s.icon, s.notes);
   res.json(getService(req.user.id, Number(info.lastInsertRowid)));
@@ -667,9 +669,16 @@ router.post('/registrations', (req, res) => {
       getService(req.user.id, serviceId);
     } else if (body.service && typeof body.service === 'object') {
       const s = sanitizeService(body.service);
-      const info = db.prepare('INSERT INTO services (user_id, name, url, icon, notes) VALUES (?, ?, ?, ?, ?)')
-        .run(req.user.id, s.name, s.url, s.icon, s.notes);
-      serviceId = Number(info.lastInsertRowid);
+      // Inline creation reuses an existing service with the same name instead
+      // of silently minting duplicates.
+      const existing = db.prepare('SELECT id FROM services WHERE user_id = ? AND name = ? COLLATE NOCASE').get(req.user.id, s.name);
+      if (existing) {
+        serviceId = existing.id;
+      } else {
+        const info = db.prepare('INSERT INTO services (user_id, name, url, icon, notes) VALUES (?, ?, ?, ?, ?)')
+          .run(req.user.id, s.name, s.url, s.icon, s.notes);
+        serviceId = Number(info.lastInsertRowid);
+      }
     } else {
       throw new ApiError(400, 'A service is required');
     }

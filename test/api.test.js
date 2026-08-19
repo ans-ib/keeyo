@@ -181,6 +181,24 @@ test('re-pairing is blocked while a secret exists, allowed when cleared', async 
   assert.equal(restore.status, 200);
 });
 
+test('inline service creation reuses same-named services; explicit creation refuses duplicates', async () => {
+  const before = (await call('/data')).data.services.length;
+  const r1 = await call('/registrations', {
+    body: { keyId, service: { name: 'Gmail', url: 'gmail.com' }, kind: 'passkey' },
+  });
+  assert.equal(r1.status, 200);
+  const r2 = await call('/registrations', {
+    body: { keyId, service: { name: 'gmail' }, kind: 'totp', totpApp: 'Yubico Authenticator' },
+  });
+  assert.equal(r2.status, 200);
+  assert.equal(r2.data.serviceId, r1.data.serviceId, 'case-insensitive same name reuses the service');
+  const after = (await call('/data')).data.services.length;
+  assert.equal(after, before + 1, 'only one Gmail service exists');
+
+  const dupe = await call('/services', { body: { name: 'GMAIL' } });
+  assert.equal(dupe.status, 400, 'explicit duplicate creation is refused');
+});
+
 test('registrations support the revoked flag', async () => {
   const reg = await call('/registrations', {
     body: { keyId, service: { name: 'GitHub', url: 'github.com' }, kind: 'passkey', account: 'me' },
@@ -210,7 +228,7 @@ test('export/import round-trips keys, secrets, pairing and revoked flags', async
   assert.equal(imp.status, 200);
   const d = await call('/data');
   assert.equal(d.data.keys[0].hasSecret, 1);
-  assert.equal(d.data.registrations[0].revoked, 1);
+  assert.ok(d.data.registrations.some((r) => r.revoked === 1), 'revoked flag survives import');
   keyId = d.data.keys[0].id;
 });
 
