@@ -82,6 +82,10 @@ Scrypt-hashed passwords, server-side sessions, strict CSP, full server-side WebA
 
 Node.js + Express + SQLite (Node's built-in — zero native modules), vanilla JS frontend, no build step, one tiny container. The server's only outbound request is the FIDO device-registry refresh, and `KEEYO_OFFLINE=1` turns even that off.
 
+## 💬 Support & community
+
+Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go through the [private reporting flow](SECURITY.md), never public threads.
+
 ## 🤝 Contributing
 
 Issues and PRs are welcome — especially additions to the device catalog (`public/models.js`) and real-world testing with keys I don't own. Run the test suite with `npm test`.
