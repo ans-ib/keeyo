@@ -10,6 +10,7 @@ To be super clear upfront: **this app only stores names and notes**. It does not
 
 *   **Visual inventory:** You get a grid showing all your keys. You can give them color tags, set the form factor (USB-C, nano, etc.), and mark them as active, backup, or lost.
 *   **Auto-detects keys:** If you plug a key in and tap it, Keeyo reads its fingerprint via WebAuthn and automatically fills in the vendor and model. It pulls this from the official FIDO registry and community lists, which update automatically so new keys are recognized. If a key isn't in the registry, you just name it once and the app remembers it for next time. (Note: Because of browser WebAuthn rules, you have to serve the app over HTTPS or localhost for this to work). 
+*   **"Which key is this?":** Found a random key in a drawer? Hit the identify button, plug it in, touch it, and Keeyo tells you exactly which record it is — even if it's one you marked as lost. You can have several keys plugged in at the same time; the one you physically touch is the one that answers.
 *   **Track what goes where:** Look at a specific key to see every passkey or 2FA code on it. You can also do a reverse lookup: pick a service and see exactly which keys give you access to it.
 *   **Backup warnings:** The dashboard will give you a heads-up if a service only has one usable key attached to it, so you know where you need to register a spare.
 *   **Lost key checklist:** If you lose a key, mark it as lost. Keeyo generates a checklist of every service that still trusts it and leaves a warning on your dashboard until you've revoked access everywhere.
@@ -89,4 +90,4 @@ The only optional feature that makes an outside network request is if you choose
 
 Under the hood, it is just Node.js, Express, and SQLite. The frontend is plain vanilla JavaScript with no complicated build steps, packed into one tiny container.
 
-License: MIT
+License: AGPL-3.0
