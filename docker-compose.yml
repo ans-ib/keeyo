@@ -1,0 +1,15 @@
+services:
+  keeyo:
+    build: .
+    container_name: keeyo
+    restart: unless-stopped
+    ports:
+      - "5390:5390"
+    volumes:
+      - keeyo-data:/data
+    environment:
+      # SESSION_TTL_DAYS: 30
+      TZ: "Etc/UTC"
+
+volumes:
+  keeyo-data:

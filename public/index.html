@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Keeyo — hardware key manager</title>
+  <meta name="description" content="Self-hosted inventory for your hardware security keys.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Apply saved theme before first paint to avoid flashing.
+    (function () {
+      var t = localStorage.getItem('keeyo-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    })();
+  </script>
+</head>
+<body>
+  <div id="app" class="app-root">
+    <div class="boot-splash">
+      <svg viewBox="0 0 48 48" width="52" height="52" aria-hidden="true">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.25"/>
+        <circle cx="24" cy="18" r="6" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M24 24v12m0-4h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      </svg>
+      <p>Opening the register…</p>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+  <script src="models.js"></script>
+  <script src="aaguids.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
