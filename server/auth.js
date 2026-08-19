@@ -88,6 +88,10 @@ function userCount() {
   return db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 }
 
+function currentToken(req) {
+  return parseCookies(req)[COOKIE_NAME] || '';
+}
+
 // ---------- middleware ----------
 
 function requireAuth(req, res, next) {
@@ -121,6 +125,9 @@ function loginAllowed(ip) {
 }
 
 function recordLoginFailure(ip) {
+  if (attempts.size > 5000) {
+    for (const [k, v] of attempts) if (v.resetAt < Date.now()) attempts.delete(k);
+  }
   const entry = attempts.get(ip);
   if (!entry || entry.resetAt < Date.now()) {
     attempts.set(ip, { count: 1, resetAt: Date.now() + WINDOW_MS });
@@ -140,6 +147,7 @@ module.exports = {
   destroySession,
   sessionUser,
   userCount,
+  currentToken,
   requireAuth,
   requireAdmin,
   loginAllowed,

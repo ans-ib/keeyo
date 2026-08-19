@@ -74,6 +74,18 @@ CREATE TABLE IF NOT EXISTS registrations (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS login_credentials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  credential_id TEXT NOT NULL,
+  public_key    TEXT NOT NULL,
+  alg           INTEGER NOT NULL DEFAULT -7,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_logincreds_user ON login_credentials(user_id);
+
 CREATE TABLE IF NOT EXISTS attachments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -107,6 +119,7 @@ ensureColumn('keys', 'credential_id', "credential_id TEXT NOT NULL DEFAULT ''");
 ensureColumn('keys', 'public_key', "public_key TEXT NOT NULL DEFAULT ''");
 ensureColumn('keys', 'credential_alg', 'credential_alg INTEGER NOT NULL DEFAULT -7');
 ensureColumn('keys', 'secret', "secret TEXT NOT NULL DEFAULT ''");
+ensureColumn('registrations', 'revoked', 'revoked INTEGER NOT NULL DEFAULT 0');
 
 /** Run fn inside a transaction; rolls back on throw. */
 function tx(fn) {

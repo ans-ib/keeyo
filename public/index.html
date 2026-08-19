@@ -7,13 +7,7 @@
   <meta name="description" content="Self-hosted inventory for your hardware security keys.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <script>
-    // Apply saved theme before first paint to avoid flashing.
-    (function () {
-      var t = localStorage.getItem('keeyo-theme');
-      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-    })();
-  </script>
+  <script src="theme-init.js"></script>
 </head>
 <body>
   <div id="app" class="app-root">

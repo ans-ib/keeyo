@@ -73,6 +73,68 @@ function spkiToPem(b64) {
   return `-----BEGIN PUBLIC KEY-----\n${b64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----\n`;
 }
 
+// ---------- WebAuthn verification (shared by secret reveal and MFA login) ----------
+
+function verifyClientData(raw, { type, challenge, hostname }) {
+  let cd;
+  try {
+    cd = JSON.parse(raw.toString('utf8'));
+  } catch {
+    throw new ApiError(400, 'Malformed assertion');
+  }
+  if (cd.type !== type) throw new ApiError(403, 'Wrong ceremony type');
+  if (cd.challenge !== challenge) throw new ApiError(403, 'Challenge mismatch');
+  let originHost = '';
+  try { originHost = new URL(cd.origin).hostname; } catch { /* rejected below */ }
+  if (!originHost || originHost !== hostname) {
+    throw new ApiError(403, `Origin mismatch — assertion came from "${originHost || '?'}", expected "${hostname}"`);
+  }
+  return cd;
+}
+
+// Full assertion check: client data (type/challenge/origin), rpIdHash,
+// user-presence flag, and the signature against the stored public key.
+function verifyAssertion(req, cred, challenge, body) {
+  const clientDataRaw = Buffer.from(String(body.clientDataJSON || ''), 'base64url');
+  verifyClientData(clientDataRaw, { type: 'webauthn.get', challenge, hostname: req.hostname });
+  const authData = Buffer.from(String(body.authenticatorData || ''), 'base64url');
+  const signature = Buffer.from(String(body.signature || ''), 'base64url');
+  if (authData.length < 37 || signature.length === 0) throw new ApiError(400, 'Malformed assertion');
+  const rpIdHash = crypto.createHash('sha256').update(req.hostname).digest();
+  if (!rpIdHash.equals(authData.subarray(0, 32))) throw new ApiError(403, 'RP ID mismatch');
+  if (!(authData[32] & 0x01)) throw new ApiError(403, 'User presence was not asserted');
+  const signed = Buffer.concat([authData, crypto.createHash('sha256').update(clientDataRaw).digest()]);
+  let ok = false;
+  try {
+    ok = crypto.verify(cred.alg === -8 ? null : 'sha256', signed, cred.publicKeyPem, signature);
+  } catch {
+    ok = false;
+  }
+  if (!ok) throw new ApiError(403, 'Signature check failed — that is not the paired key');
+}
+
+// One-time challenge store shared by all WebAuthn ceremonies.
+const pendingChallenges = new Map(); // token -> { kind, userId, keyId?, challenge, expires }
+
+function issueChallenge(kind, fields = {}) {
+  if (pendingChallenges.size > 1000) {
+    for (const [t, e] of pendingChallenges) if (e.expires < Date.now()) pendingChallenges.delete(t);
+  }
+  const token = crypto.randomBytes(16).toString('hex');
+  const challenge = crypto.randomBytes(32).toString('base64url');
+  pendingChallenges.set(token, { kind, challenge, expires: Date.now() + 2 * 60 * 1000, ...fields });
+  return { token, challenge };
+}
+
+function consumeChallenge(token, kind) {
+  const entry = pendingChallenges.get(String(token || ''));
+  pendingChallenges.delete(String(token || ''));
+  if (!entry || entry.kind !== kind || entry.expires < Date.now()) {
+    throw new ApiError(400, 'Challenge expired — try again');
+  }
+  return entry;
+}
+
 // Returns the new secret value, or undefined for "leave unchanged".
 function secretUpdate(body) {
   if (body.clearSecret === true) return '';
@@ -99,6 +161,7 @@ function sanitizeRegistration(body) {
     account: str(body.account, { label: 'account', max: 200 }),
     totpApp: kind === 'totp' ? str(body.totpApp, { label: 'TOTP app', max: 120 }) : '',
     notes: str(body.notes, { label: 'notes', max: 2000 }),
+    revoked: body.revoked ? 1 : 0,
   };
 }
 
@@ -137,7 +200,7 @@ const KEY_COLS = `id, name, vendor, model, serial, color,
   created_at AS createdAt`;
 const SERVICE_COLS = `id, name, url, icon, notes, created_at AS createdAt`;
 const REG_COLS = `id, key_id AS keyId, service_id AS serviceId, kind, account,
-  totp_app AS totpApp, notes, created_at AS createdAt`;
+  totp_app AS totpApp, notes, revoked, created_at AS createdAt`;
 const CATALOG_COLS = `id, type, value, extra, created_at AS createdAt`;
 
 function mapCatalogRow(row) {
@@ -189,6 +252,9 @@ router.post('/setup', (req, res) => {
   res.json({ ok: true });
 });
 
+const MFA_DISABLED = process.env.KEEYO_DISABLE_MFA === '1' || process.env.KEEYO_DISABLE_MFA === 'true';
+const LOGIN_KEY_COLS = 'id, name, credential_id AS credentialId, alg, created_at AS createdAt';
+
 router.post('/login', (req, res) => {
   const ip = req.ip || 'unknown';
   if (!auth.loginAllowed(ip)) throw new ApiError(429, 'Too many failed attempts. Try again in a few minutes.');
@@ -200,8 +266,41 @@ router.post('/login', (req, res) => {
     auth.recordLoginFailure(ip);
     throw new ApiError(401, 'Wrong username or password');
   }
+
+  // Second factor: if the account has sign-in security keys, require one.
+  const loginKeys = MFA_DISABLED
+    ? []
+    : db.prepare('SELECT credential_id AS credentialId FROM login_credentials WHERE user_id = ?').all(user.id);
+  if (loginKeys.length > 0) {
+    const { token, challenge } = issueChallenge('mfa', { userId: user.id });
+    res.json({ mfaRequired: true, mfaToken: token, challenge, credentialIds: loginKeys.map((k) => k.credentialId) });
+    return;
+  }
+
   auth.clearLoginFailures(ip);
   auth.createSession(req, res, user.id);
+  res.json({ ok: true });
+});
+
+router.post('/login/mfa', (req, res) => {
+  const ip = req.ip || 'unknown';
+  if (!auth.loginAllowed(ip)) throw new ApiError(429, 'Too many failed attempts. Try again in a few minutes.');
+  const body = req.body || {};
+  const entry = consumeChallenge(body.mfaToken, 'mfa');
+  const cred = db.prepare('SELECT credential_id, public_key, alg FROM login_credentials WHERE user_id = ? AND credential_id = ?')
+    .get(entry.userId, String(body.credentialId || ''));
+  if (!cred) {
+    auth.recordLoginFailure(ip);
+    throw new ApiError(403, 'That security key is not enrolled for this account');
+  }
+  try {
+    verifyAssertion(req, { publicKeyPem: cred.public_key, alg: cred.alg }, entry.challenge, body);
+  } catch (err) {
+    auth.recordLoginFailure(ip);
+    throw err;
+  }
+  auth.clearLoginFailures(ip);
+  auth.createSession(req, res, entry.userId);
   res.json({ ok: true });
 });
 
@@ -223,6 +322,49 @@ router.put('/me/password', (req, res) => {
   const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
   if (!auth.verifyPassword(current, row.password_hash)) throw new ApiError(400, 'Current password is wrong');
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(next), req.user.id);
+  // Changing the password signs out every other session.
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, auth.currentToken(req));
+  res.json({ ok: true });
+});
+
+// ---------- sign-in security keys (MFA enrollment) ----------
+
+router.get('/login-keys', (req, res) => {
+  res.json(db.prepare(`SELECT ${LOGIN_KEY_COLS} FROM login_credentials WHERE user_id = ? ORDER BY id`).all(req.user.id));
+});
+
+router.post('/login-keys/challenge', (req, res) => {
+  const { token, challenge } = issueChallenge('enroll', { userId: req.user.id });
+  res.json({ token, challenge });
+});
+
+router.post('/login-keys', (req, res) => {
+  const body = req.body || {};
+  const entry = consumeChallenge(body.token, 'enroll');
+  if (entry.userId !== req.user.id) throw new ApiError(403, 'Challenge belongs to another session');
+  const name = str(body.name, { required: true, label: 'Key name', max: 80 });
+  const credentialId = typeof body.credentialId === 'string' ? body.credentialId : '';
+  const publicKey = typeof body.publicKey === 'string' ? body.publicKey.replace(/\s+/g, '') : '';
+  const alg = Number(body.alg);
+  if (!credentialId || credentialId.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(credentialId)) throw new ApiError(400, 'Invalid credential');
+  if (!publicKey || publicKey.length > 4000 || !/^[A-Za-z0-9+/=]+$/.test(publicKey)) throw new ApiError(400, 'Invalid public key');
+  if (![-7, -257, -8].includes(alg)) throw new ApiError(400, 'Unsupported key algorithm');
+  const clientDataRaw = Buffer.from(String(body.clientDataJSON || ''), 'base64url');
+  verifyClientData(clientDataRaw, { type: 'webauthn.create', challenge: entry.challenge, hostname: req.hostname });
+  const dupe = db.prepare('SELECT id FROM login_credentials WHERE user_id = ? AND credential_id = ?').get(req.user.id, credentialId);
+  if (dupe) throw new ApiError(400, 'That key is already enrolled');
+  const count = db.prepare('SELECT COUNT(*) AS n FROM login_credentials WHERE user_id = ?').get(req.user.id).n;
+  if (count >= 10) throw new ApiError(400, 'At most 10 sign-in keys per account');
+  const info = db.prepare('INSERT INTO login_credentials (user_id, name, credential_id, public_key, alg) VALUES (?, ?, ?, ?, ?)')
+    .run(req.user.id, name, credentialId, spkiToPem(publicKey), alg);
+  res.json(db.prepare(`SELECT ${LOGIN_KEY_COLS} FROM login_credentials WHERE id = ?`).get(Number(info.lastInsertRowid)));
+});
+
+router.delete('/login-keys/:id', (req, res) => {
+  const id = intId(req.params.id);
+  const row = db.prepare('SELECT id FROM login_credentials WHERE user_id = ? AND id = ?').get(req.user.id, id);
+  if (!row) throw new ApiError(404, 'Sign-in key not found');
+  db.prepare('DELETE FROM login_credentials WHERE user_id = ? AND id = ?').run(req.user.id, id);
   res.json({ ok: true });
 });
 
@@ -343,11 +485,18 @@ router.put('/keys/:id', (req, res) => {
     WHERE user_id = ? AND id = ?
   `).run(k.name, k.vendor, k.model, k.serial, k.color, k.formFactor, k.status, k.purchasedAt, k.notes, k.image, req.user.id, id);
   const cred = sanitizeCredential(body);
+  const secret = secretUpdate(body);
   if (cred) {
+    // Re-pairing guard: swapping the credential while a secret note exists would
+    // let a session holder "reveal" the note with their own key. The old secret
+    // must be cleared or replaced in the same request (destroyed, never exposed).
+    const row = db.prepare('SELECT credential_id, secret FROM keys WHERE user_id = ? AND id = ?').get(req.user.id, id);
+    if (row.secret && row.credential_id && row.credential_id !== cred.id && secret === undefined) {
+      throw new ApiError(403, 'This key holds a secret note bound to its current pairing — clear or replace the note to re-pair');
+    }
     db.prepare('UPDATE keys SET credential_id = ?, public_key = ?, credential_alg = ? WHERE user_id = ? AND id = ?')
       .run(cred.id, cred.publicKeyPem, cred.alg, req.user.id, id);
   }
-  const secret = secretUpdate(body);
   if (secret !== undefined) {
     db.prepare('UPDATE keys SET secret = ? WHERE user_id = ? AND id = ?').run(secret, req.user.id, id);
   }
@@ -356,56 +505,25 @@ router.put('/keys/:id', (req, res) => {
 
 // ---------- secret reveal (requires tapping the physical key) ----------
 
-const revealChallenges = new Map(); // token -> { userId, keyId, challenge, expires }
-
 router.post('/keys/:id/reveal-challenge', (req, res) => {
   const id = intId(req.params.id);
   const key = db.prepare('SELECT credential_id, secret FROM keys WHERE user_id = ? AND id = ?').get(req.user.id, id);
   if (!key) throw new ApiError(404, 'Key not found');
   if (!key.credential_id) throw new ApiError(400, 'This key was not paired by scanning — no possession proof is available');
   if (!key.secret) throw new ApiError(400, 'No secret note is stored on this key');
-  for (const [t, e] of revealChallenges) if (e.expires < Date.now()) revealChallenges.delete(t);
-  const token = crypto.randomBytes(16).toString('hex');
-  const challenge = crypto.randomBytes(32).toString('base64url');
-  revealChallenges.set(token, { userId: req.user.id, keyId: id, challenge, expires: Date.now() + 2 * 60 * 1000 });
-  res.json({ token, challenge });
+  res.json(issueChallenge('reveal', { userId: req.user.id, keyId: id }));
 });
 
 router.post('/keys/:id/reveal', (req, res) => {
   const id = intId(req.params.id);
   const body = req.body || {};
-  const entry = revealChallenges.get(String(body.token || ''));
-  revealChallenges.delete(String(body.token || ''));
-  if (!entry || entry.userId !== req.user.id || entry.keyId !== id || entry.expires < Date.now()) {
-    throw new ApiError(400, 'Challenge expired — try again');
-  }
+  const entry = consumeChallenge(body.token, 'reveal');
+  if (entry.userId !== req.user.id || entry.keyId !== id) throw new ApiError(400, 'Challenge expired — try again');
   const key = db.prepare('SELECT credential_id, public_key, credential_alg, secret FROM keys WHERE user_id = ? AND id = ?')
     .get(req.user.id, id);
   if (!key || !key.credential_id || !key.public_key) throw new ApiError(400, 'No paired credential on this key');
   if (String(body.credentialId || '') !== key.credential_id) throw new ApiError(403, 'That is not the paired key');
-
-  let clientDataRaw;
-  let clientData;
-  try {
-    clientDataRaw = Buffer.from(String(body.clientDataJSON || ''), 'base64url');
-    clientData = JSON.parse(clientDataRaw.toString('utf8'));
-  } catch {
-    throw new ApiError(400, 'Malformed assertion');
-  }
-  if (clientData.type !== 'webauthn.get' || clientData.challenge !== entry.challenge) {
-    throw new ApiError(403, 'Assertion does not match the challenge');
-  }
-  const authData = Buffer.from(String(body.authenticatorData || ''), 'base64url');
-  const signature = Buffer.from(String(body.signature || ''), 'base64url');
-  if (authData.length < 37 || signature.length === 0) throw new ApiError(400, 'Malformed assertion');
-  const signed = Buffer.concat([authData, crypto.createHash('sha256').update(clientDataRaw).digest()]);
-  let ok = false;
-  try {
-    ok = crypto.verify(key.credential_alg === -8 ? null : 'sha256', signed, key.public_key, signature);
-  } catch {
-    ok = false;
-  }
-  if (!ok) throw new ApiError(403, 'Signature check failed — that is not the paired key');
+  verifyAssertion(req, { publicKeyPem: key.public_key, alg: key.credential_alg }, entry.challenge, body);
   res.json({ secret: key.secret });
 });
 
@@ -519,8 +637,8 @@ router.put('/registrations/:id', (req, res) => {
   const existing = db.prepare(`SELECT ${REG_COLS} FROM registrations WHERE user_id = ? AND id = ?`).get(req.user.id, id);
   if (!existing) throw new ApiError(404, 'Registration not found');
   const r = sanitizeRegistration(req.body || {});
-  db.prepare('UPDATE registrations SET kind = ?, account = ?, totp_app = ?, notes = ? WHERE user_id = ? AND id = ?')
-    .run(r.kind, r.account, r.totpApp, r.notes, req.user.id, id);
+  db.prepare('UPDATE registrations SET kind = ?, account = ?, totp_app = ?, notes = ?, revoked = ? WHERE user_id = ? AND id = ?')
+    .run(r.kind, r.account, r.totpApp, r.notes, r.revoked, req.user.id, id);
   const row = db.prepare(`SELECT ${REG_COLS} FROM registrations WHERE user_id = ? AND id = ?`).get(req.user.id, id);
   res.json(row);
 });
@@ -606,9 +724,9 @@ router.post('/import', (req, res) => {
       if (!keyId || !serviceId) continue;
       const r = sanitizeRegistration(raw);
       db.prepare(`
-        INSERT INTO registrations (user_id, key_id, service_id, kind, account, totp_app, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(uid, keyId, serviceId, r.kind, r.account, r.totpApp, r.notes);
+        INSERT INTO registrations (user_id, key_id, service_id, kind, account, totp_app, notes, revoked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(uid, keyId, serviceId, r.kind, r.account, r.totpApp, r.notes, r.revoked);
     }
   });
 

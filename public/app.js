@@ -5,6 +5,13 @@
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 
+// Broken favicon fallback without inline onerror handlers (CSP-safe):
+// error events don't bubble but can be captured document-wide.
+document.addEventListener('error', (e) => {
+  const t = e.target;
+  if (t && t.tagName === 'IMG' && t.classList.contains('fav')) t.remove();
+}, true);
+
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -483,7 +490,7 @@ function serviceIconHTML(svc, cls = '') {
     const domain = domainOf(svc.url);
     if (domain) {
       return `<span class="svc-icon ${cls}" style="${letterStyle}">${letter}<img class="fav" alt=""
-        src="https://icons.duckduckgo.com/ip3/${esc(domain)}.ico" loading="lazy" onerror="this.remove()"></span>`;
+        src="https://icons.duckduckgo.com/ip3/${esc(domain)}.ico" loading="lazy"></span>`;
     }
   }
   if (svc.icon && svc.icon !== 'favicon') {
@@ -526,6 +533,10 @@ function openModal({ title, code = 'Keeyo register', bodyHTML, submitLabel = 'Sa
 
   const overlay = $('.modal-overlay', root);
   const form = $('form.modal', root);
+  form.setAttribute('role', 'dialog');
+  form.setAttribute('aria-modal', 'true');
+  form.setAttribute('aria-label', title);
+  const prevFocus = document.activeElement;
   let closed = false;
 
   function close() {
@@ -533,6 +544,7 @@ function openModal({ title, code = 'Keeyo register', bodyHTML, submitLabel = 'Sa
     closed = true;
     document.removeEventListener('keydown', onKey);
     overlay.classList.add('closing');
+    if (prevFocus && typeof prevFocus.focus === 'function' && document.contains(prevFocus)) prevFocus.focus();
     setTimeout(() => {
       // A newer modal may already own the root — never wipe it.
       if (root.firstElementChild === overlay) root.innerHTML = '';
@@ -540,7 +552,25 @@ function openModal({ title, code = 'Keeyo register', bodyHTML, submitLabel = 'Sa
     }, 170);
   }
   function onKey(e) {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    // Keep Tab focus inside the dialog.
+    if (e.key === 'Tab') {
+      const focusables = $$('a[href], button:not([disabled]), input, select, textarea, [tabindex]', form)
+        .filter((el) => el.offsetParent !== null);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   }
   document.addEventListener('keydown', onKey);
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
@@ -602,7 +632,8 @@ async function boot() {
     render();
   } catch (err) {
     app.innerHTML = `<div class="boot-splash"><p>Could not reach the Keeyo server.<br><span class="muted small">${esc(err.message)}</span></p>
-      <button class="btn" onclick="location.reload()">Retry</button></div>`;
+      <button class="btn" id="boot-retry">Retry</button></div>`;
+    $('#boot-retry').addEventListener('click', () => location.reload());
   }
 }
 
@@ -747,7 +778,11 @@ function renderLogin() {
     const box = $('.form-error', f);
     box.classList.remove('visible');
     try {
-      await api('/login', { body: { username: f.username.value, password: f.password.value } });
+      const res = await api('/login', { body: { username: f.username.value, password: f.password.value } });
+      if (res.mfaRequired) {
+        renderMfa(res);
+        return;
+      }
       await loadData();
       location.hash = '#/keys';
       render();
@@ -756,6 +791,62 @@ function renderLogin() {
       box.classList.add('visible');
     }
   });
+}
+
+// Second factor: the account has sign-in security keys enrolled.
+function renderMfa(mfa) {
+  authShell(`
+    <p class="auth-sub">Second factor · security key required</p>
+    <div class="scan-stage" style="padding-top:6px">
+      <div class="scan-orb">${I.keyIcon}</div>
+      <p>Insert one of the security keys enrolled for this account and touch it when it blinks.</p>
+      <div class="form-error" id="mfa-error"></div>
+      <button class="btn btn-primary" id="mfa-btn" style="width:100%">Use security key</button>
+      <div><button type="button" class="link-btn" id="mfa-back">back to sign in</button></div>
+    </div>`);
+
+  const box = $('#mfa-error');
+  const btn = $('#mfa-btn');
+  $('#mfa-back').addEventListener('click', renderLogin);
+
+  async function attempt() {
+    box.classList.remove('visible');
+    btn.disabled = true;
+    btn.textContent = 'Touch your key…';
+    try {
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge: b64urlToBuf(mfa.challenge),
+          allowCredentials: mfa.credentialIds.map((id) => ({ type: 'public-key', id: b64urlToBuf(id) })),
+          userVerification: 'preferred',
+          timeout: 60000,
+        },
+      });
+      const r = assertion.response;
+      await api('/login/mfa', {
+        body: {
+          mfaToken: mfa.mfaToken,
+          credentialId: assertion.id,
+          clientDataJSON: bufToB64url(r.clientDataJSON),
+          authenticatorData: bufToB64url(r.authenticatorData),
+          signature: bufToB64url(r.signature),
+        },
+      });
+      await loadData();
+      location.hash = '#/keys';
+      render();
+    } catch (err) {
+      box.textContent = err.name === 'NotAllowedError'
+        ? 'Cancelled or timed out — try again.'
+        : (err.status === 400 ? 'Challenge expired — go back and sign in again.' : err.message);
+      box.classList.add('visible');
+      btn.disabled = false;
+      btn.textContent = 'Use security key';
+    }
+  }
+
+  btn.addEventListener('click', attempt);
+  attempt();
 }
 
 /* ============================== keys page ============================== */
@@ -833,6 +924,17 @@ function viewKeys() {
     if (parts.length) {
       banner = `<div class="notice-strip">${I.warn}<span>${parts.join(' · ')}</span><a href="#/settings/services">Review services</a></div>`;
     }
+  }
+
+  // Lost keys with registrations that haven't been revoked yet are urgent.
+  const lostPending = state.keys
+    .filter((k) => k.status === 'lost')
+    .map((k) => ({ k, n: regsForKey(k.id).filter((r) => !r.revoked).length }))
+    .filter((x) => x.n > 0);
+  if (lostPending.length) {
+    banner = `<div class="notice-strip danger-strip">${I.warn}
+      <span>Lost ${lostPending.map((x) => `${tagNo(x.k.id)} “${esc(x.k.name)}” still trusted by ${x.n} service${x.n > 1 ? 's' : ''}`).join(' · ')}</span>
+      <a href="#/keys/${lostPending[0].k.id}">Open checklist</a></div>` + banner;
   }
 
   return `
@@ -925,7 +1027,7 @@ function viewKeyDetail(key) {
   }
 
   return `
-    <button class="back-link" onclick="location.hash='#/keys'">${I.back} All keys</button>
+    <a class="back-link" href="#/keys">${I.back} All keys</a>
     <div class="key-hero" style="--key-color:${esc(key.color)}">
       <div class="key-art-wrap">${keyVisual(key, 130)}</div>
       <div class="hero-info">
@@ -945,6 +1047,34 @@ function viewKeyDetail(key) {
         <button class="btn btn-sm btn-danger" data-del-key>${I.trash}</button>
       </div>
     </div>
+
+    ${key.status === 'lost' && regs.length ? (() => {
+      const done = regs.filter((r) => r.revoked).length;
+      return `
+    <div class="section checklist-section">
+      <div class="section-head">
+        <h2>Revocation checklist</h2>
+        <span class="count">${done}/${regs.length} revoked</span>
+        <div class="grow"></div>
+      </div>
+      <div class="checklist-note">This key is marked <b>lost</b>. Remove its access at each service below, then tick it off.</div>
+      <div class="row-list">
+        ${regs.map((r) => {
+          const svc = serviceById(r.serviceId) || { name: '(deleted service)' };
+          return `
+          <label class="row check-row ${r.revoked ? 'is-revoked' : ''}">
+            <input type="checkbox" data-revoke="${r.id}" ${r.revoked ? 'checked' : ''}>
+            ${serviceIconHTML(svc, 'sm')}
+            <div class="row-main">
+              <div class="row-title">${esc(svc.name)} <span class="chip ${KIND_CHIP[r.kind]}">${KIND_LABEL[r.kind]}</span></div>
+              ${r.account ? `<div class="row-sub">${esc(r.account)}</div>` : ''}
+            </div>
+            <span class="chip ${r.revoked ? 'ok' : 'danger'}">${r.revoked ? 'revoked' : 'still active'}</span>
+          </label>`;
+        }).join('')}
+      </div>
+    </div>`;
+    })() : ''}
 
     <div class="section">
       <div class="section-head">
@@ -1066,6 +1196,19 @@ function bindKeyDetail(key) {
       }
     });
   }
+  $$('[data-revoke]').forEach((cb) =>
+    cb.addEventListener('change', async () => {
+      const reg = state.registrations.find((r) => r.id === Number(cb.dataset.revoke));
+      if (!reg) return;
+      try {
+        await api(`/registrations/${reg.id}`, { method: 'PUT', body: { ...reg, revoked: cb.checked } });
+        refresh();
+      } catch (err) {
+        toast(err.message, 'error');
+        cb.checked = !cb.checked;
+      }
+    }));
+
   $$('[data-del-att]').forEach((b) =>
     b.addEventListener('click', async () => {
       const ok = await confirmDialog({
@@ -1286,7 +1429,8 @@ function viewSettings(section) {
     content = viewCatalogSection();
   } else if (section === 'account') {
     content = `
-      <div class="settings-grid"><div class="settings-card">
+      <div class="settings-grid">
+      <div class="settings-card">
         <h2>Account</h2>
         <p class="desc">Signed in as <b>${esc(state.me.username)}</b>${state.me.isAdmin ? ' (admin)' : ''}</p>
         <form id="pw-form">
@@ -1295,7 +1439,16 @@ function viewSettings(section) {
           <div class="field"><label>New password</label><input type="password" name="next" autocomplete="new-password" required></div>
           <button class="btn" type="submit">Change password</button>
         </form>
-      </div></div>`;
+        <p class="hint small muted" style="margin-top:10px">Changing your password signs out every other session.</p>
+      </div>
+      <div class="settings-card">
+        <h2>Sign-in security keys</h2>
+        <p class="desc">Protect Keeyo itself with a hardware key: once one is enrolled, signing in requires your password <b>and</b> a key tap.</p>
+        <div id="login-key-list"><p class="muted small">Loading…</p></div>
+        <div style="margin-top:12px"><button class="btn" id="add-login-key">${I.plus} Enroll a key</button></div>
+        <p class="hint small muted" style="margin-top:10px">Lost all sign-in keys? The server owner can start Keeyo with <code>KEEYO_DISABLE_MFA=1</code> or run <code>scripts/reset-password.js</code>.</p>
+      </div>
+      </div>`;
   } else if (section === 'users') {
     content = `
       <div class="settings-grid"><div class="settings-card">
@@ -1314,7 +1467,9 @@ function viewSettings(section) {
           <button class="btn" id="import-btn">Import backup…</button>
           <input type="file" id="import-file" accept="application/json,.json" style="display:none">
         </div>
-        <p class="hint small muted" style="margin-top:10px">Importing replaces all of your current data.</p>
+        <p class="hint small muted" style="margin-top:10px">Importing replaces all of your current data.
+          Exports contain your secret notes in plain text — store the file safely.
+          File attachments live only in the database: back up the <code>/data</code> volume to keep them.</p>
       </div></div>`;
   } else {
     content = `
@@ -1358,6 +1513,8 @@ function bindSettings(section) {
         box.classList.add('visible');
       }
     });
+    loadLoginKeys();
+    $('#add-login-key').addEventListener('click', () => loginKeyModal());
   }
 
   if (section === 'data') {
@@ -1375,7 +1532,8 @@ function bindSettings(section) {
       }
       const ok = await confirmDialog({
         title: 'Import backup?',
-        message: `This will <b>replace</b> all your current keys, services and registrations with the contents of <b>${esc(file.name)}</b>.`,
+        message: `This will <b>replace</b> all your current keys, services and registrations with the contents of <b>${esc(file.name)}</b>.<br><br>
+          ⚠ File attachments are not part of JSON backups — <b>your current attachments will be deleted</b>.`,
         confirmLabel: 'Replace my data',
       });
       if (!ok) return;
@@ -1416,6 +1574,84 @@ async function loadUsers() {
       toast('User deleted');
       loadUsers();
     }));
+}
+
+async function loadLoginKeys() {
+  const box = $('#login-key-list');
+  if (!box) return;
+  const keys = await api('/login-keys');
+  if (!$('#login-key-list')) return;
+  $('#login-key-list').innerHTML = keys.length
+    ? keys.map((k) => `
+      <div class="user-row">
+        ${I.keyIcon}<span class="name">${esc(k.name)}</span>
+        <span class="muted small">${esc(formatDate(k.createdAt))}</span>
+        <button class="btn-icon danger" data-del-lk="${k.id}" data-lk-name="${esc(k.name)}" title="Remove">${I.trash}</button>
+      </div>`).join('')
+    : '<p class="muted small">No sign-in keys enrolled — Keeyo is protected by password only.</p>';
+  $$('[data-del-lk]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const ok = await confirmDialog({
+        title: `Remove "${b.dataset.lkName}"?`,
+        message: 'It will no longer be usable to sign in. If it was the last one, sign-in falls back to password only.',
+        confirmLabel: 'Remove',
+      });
+      if (!ok) return;
+      await api(`/login-keys/${b.dataset.delLk}`, { method: 'DELETE' });
+      toast('Sign-in key removed');
+      loadLoginKeys();
+    }));
+}
+
+function loginKeyModal() {
+  openModal({
+    title: 'Enroll a sign-in key',
+    code: 'Form U-02 · second factor',
+    submitLabel: 'Enroll — touch key',
+    bodyHTML: `
+      <div class="field"><label>Name</label>
+        <input type="text" name="lkName" required maxlength="80" placeholder="e.g. Daily driver, Desk backup">
+        <div class="hint">Enroll at least two keys so losing one never locks you out.</div></div>`,
+    onSubmit: async (form) => {
+      const name = form.lkName.value.trim();
+      if (!name) throw new Error('Give the key a name');
+      const { token, challenge } = await api('/login-keys/challenge', { method: 'POST', body: {} });
+      let cred;
+      try {
+        cred = await navigator.credentials.create({
+          publicKey: {
+            challenge: b64urlToBuf(challenge),
+            rp: { name: 'Keeyo' },
+            user: {
+              id: crypto.getRandomValues(new Uint8Array(16)),
+              name: state.me.username,
+              displayName: state.me.username,
+            },
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+            authenticatorSelection: { authenticatorAttachment: 'cross-platform', residentKey: 'discouraged', userVerification: 'preferred' },
+            attestation: 'none',
+            timeout: 60000,
+          },
+        });
+      } catch (err) {
+        throw new Error(err.name === 'NotAllowedError' ? 'Cancelled or timed out — try again.' : err.message);
+      }
+      const spki = typeof cred.response.getPublicKey === 'function' ? cred.response.getPublicKey() : null;
+      if (!spki) throw new Error('This browser cannot export the credential — try a current Chrome/Brave/Firefox.');
+      await api('/login-keys', {
+        body: {
+          token,
+          name,
+          credentialId: cred.id,
+          publicKey: bufToB64(spki),
+          alg: typeof cred.response.getPublicKeyAlgorithm === 'function' ? cred.response.getPublicKeyAlgorithm() : -7,
+          clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+        },
+      });
+      toast('Sign-in key enrolled');
+      loadLoginKeys();
+    },
+  });
 }
 
 function userModal() {
@@ -1647,14 +1883,27 @@ function keyModal(existing = null) {
         </div>
       </div>`;
 
-  const secretField = (existing && !existing.credentialId) ? '' : `
-      <div class="field" id="secret-field" style="${existing ? '' : 'display:none'}">
+  const secretInputHTML = `
         <label>Secret note <span class="muted">(PIN, PUK… optional)</span></label>
         <input type="password" name="secretInput" autocomplete="off" maxlength="200"
           placeholder="${existing && existing.hasSecret ? 'Currently set — type to replace' : 'e.g. this key’s PIN'}">
         ${existing && existing.hasSecret ? '<label class="check-line"><input type="checkbox" name="clearSecret"> Clear the stored note</label>' : ''}
-        <div class="hint">Never shown in the app — revealed only after tapping this exact physical key.</div>
-      </div>`;
+        <div class="hint">Never shown in the app — revealed only after tapping this exact physical key.</div>`;
+
+  let secretField;
+  if (existing && !existing.credentialId) {
+    // Not paired yet (added manually or before pairing existed) — offer pairing.
+    secretField = `
+      <div class="field" id="pair-field">
+        <label>Secret note <span class="muted">(requires pairing)</span></label>
+        <button type="button" class="btn btn-sm" id="pair-btn">${I.scan} Pair with this physical key</button>
+        <div class="hint">Pairing lets Keeyo store a note revealed only by tapping this exact key.</div>
+      </div>
+      <div class="field" id="secret-field" style="display:none">${secretInputHTML}</div>`;
+  } else {
+    secretField = `
+      <div class="field" id="secret-field" style="${existing ? '' : 'display:none'}">${secretInputHTML}</div>`;
+  }
 
   openModal({
     title: existing ? 'Key record' : 'Register a key',
@@ -1782,6 +2031,31 @@ function keyModal(existing = null) {
       if (!existing) showStep('scan');
       const manualBtn = $('#manual-btn', form);
       if (manualBtn) manualBtn.addEventListener('click', () => showStep('form'));
+
+      // Edit-mode pairing for keys that never went through the scan step.
+      const pairBtn = $('#pair-btn', form);
+      if (pairBtn) {
+        pairBtn.addEventListener('click', async () => {
+          pairBtn.disabled = true;
+          pairBtn.innerHTML = `${I.scan} Touch your key…`;
+          try {
+            const det = await detectKey();
+            if (!document.contains(form)) return;
+            if (!det.credential) throw new Error('The browser could not export a pairing credential');
+            credential = det.credential;
+            detectedAaguid = det.aaguid;
+            detectedNfc = det.transports.includes('nfc');
+            $('#pair-field', form).style.display = 'none';
+            $('#secret-field', form).style.display = '';
+            toast('Paired — save to keep it');
+          } catch (err) {
+            if (!document.contains(form)) return;
+            toast(err.name === 'NotAllowedError' ? 'Cancelled or timed out' : err.message, 'error');
+            pairBtn.disabled = false;
+            pairBtn.innerHTML = `${I.scan} Pair with this physical key`;
+          }
+        });
+      }
 
       // ----- photo upload -----
       function renderPhoto() {
