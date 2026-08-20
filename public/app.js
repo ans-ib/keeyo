@@ -72,8 +72,10 @@ const I = {
   check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
   back: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
-  theme: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>',
   logout: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
+  user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>',
+  globe: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.6 3.7 5.7 3.7 9S14.4 18.4 12 21c-2.4-2.6-3.7-5.7-3.7-9S9.6 5.6 12 3Z"/></svg>',
+  chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
   warn: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg>',
   logo: '<svg width="30" height="30" viewBox="0 0 160 160" aria-hidden="true"><rect x="6" y="6" width="148" height="148" fill="var(--accent)" stroke="var(--border)" stroke-width="10"/><circle cx="80" cy="52" r="21" fill="none" stroke="#fff" stroke-width="11"/><path d="M80 73v46m0-16h25" stroke="#fff" stroke-width="11" stroke-linecap="square" fill="none"/><g fill="#fff"><rect x="26" y="130" width="4" height="14"/><rect x="34" y="130" width="2" height="14"/><rect x="40" y="130" width="5" height="14"/><rect x="49" y="130" width="2" height="14"/><rect x="55" y="130" width="3" height="14"/><rect x="62" y="130" width="6" height="14"/><rect x="72" y="130" width="2" height="14"/><rect x="78" y="130" width="4" height="14"/><rect x="86" y="130" width="2" height="14"/><rect x="92" y="130" width="5" height="14"/><rect x="101" y="130" width="3" height="14"/><rect x="108" y="130" width="2" height="14"/><rect x="114" y="130" width="6" height="14"/><rect x="124" y="130" width="2" height="14"/><rect x="130" y="130" width="4" height="14"/></g></svg>',
   keyIcon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.8 12.2 9.2-9.2m-3 3 3 3"/></svg>',
@@ -117,6 +119,7 @@ const state = {
   attachments: [],
   keySearch: '',
   svcSearch: '',
+  svcOpen: null,
   keyStatusFilter: 'all',
   keySort: 'newest',
 };
@@ -906,14 +909,15 @@ async function boot() {
   }
 }
 
-const SETTINGS_SECTIONS = ['services', 'catalog', 'account', 'security', 'appearance', 'users', 'about'];
+const SETTINGS_SECTIONS = ['catalog', 'account', 'security', 'appearance', 'users'];
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, '');
   const [page, id] = hash.split('/');
   if (page === 'keys' && id) return { page: 'key', id: Number(id) };
-  if (page === 'services') return { page: 'settings', section: 'services' };
-  if (page === 'settings') return { page: 'settings', section: id || 'services' };
+  if (page === 'services') return { page: 'services' };
+  if (page === 'settings' && id === 'services') return { page: 'services' }; // legacy links
+  if (page === 'settings') return { page: 'settings', section: id || 'account' };
   return { page: 'keys' };
 }
 
@@ -927,7 +931,7 @@ function render() {
   if (route.page === 'settings' && route.section === 'data') route.section = 'account'; // Backup lives under Account now
   if (route.page === 'settings' &&
       (!SETTINGS_SECTIONS.includes(route.section) || (route.section === 'users' && !state.me.isAdmin))) {
-    route.section = 'services';
+    route.section = 'account';
   }
   const routeKey = `${route.page}:${route.id || route.section || ''}`;
   const anim = routeKey !== lastRouteKey;
@@ -941,6 +945,9 @@ function render() {
   } else if (route.page === 'settings') {
     shell(viewSettings(route.section), 'settings', anim);
     bindSettings(route.section);
+  } else if (route.page === 'services') {
+    shell(viewServicesHome(), 'keys', anim);
+    bindServicesSection();
   } else {
     shell(viewKeys(), 'keys', anim);
     bindKeys();
@@ -952,36 +959,55 @@ window.addEventListener('hashchange', render);
 /* ============================== shell ============================== */
 
 function shell(content, active, anim = false) {
-  const navItem = (id, label, icon) =>
-    `<a class="nav-link ${active === id ? 'active' : ''}" href="#/${id}">${icon}<span>${label}</span></a>`;
   app.innerHTML = `
     <header class="topbar">
       <a class="brand" href="#/keys">${I.logo}<span><span class="brand-name">KEEYO</span><span class="brand-sub">Equipment register</span></span></a>
-      <nav class="main-nav">
-        ${navItem('keys', 'Keys', I.keyIcon)}
-        ${navItem('settings', 'Settings', I.gear)}
-      </nav>
       <div class="topbar-spacer"></div>
       <div class="topbar-user">
-        <button class="btn-icon" id="theme-toggle" title="Toggle theme">${I.theme}</button>
-        <span class="username">${esc(state.me.username)}</span>
-        <button class="btn-icon" id="logout-btn" title="Sign out">${I.logout}</button>
+        <button class="user-menu-btn ${active === 'settings' ? 'on' : ''}" id="user-menu-btn" aria-haspopup="menu" aria-expanded="false">
+          ${I.user}<span class="username">${esc(state.me.username)}</span>${I.chevron}
+        </button>
+        <div class="user-menu" id="user-menu" role="menu" hidden>
+          <a href="#/settings" role="menuitem">${I.gear} Settings</a>
+          <button type="button" id="logout-btn" role="menuitem">${I.logout} Sign out</button>
+        </div>
       </div>
     </header>
     <main class="page${anim ? ' anim' : ''}">${content}</main>`;
 
-  $('#theme-toggle').addEventListener('click', () => {
-    const idx = THEMES.findIndex((t) => t.id === currentTheme());
-    const next = THEMES[(idx + 1) % THEMES.length];
-    applyTheme(next.id);
-    toast(`Theme: ${next.name}`);
+  const umBtn = $('#user-menu-btn');
+  const um = $('#user-menu');
+  umBtn.addEventListener('click', () => {
+    um.hidden = !um.hidden;
+    umBtn.setAttribute('aria-expanded', String(!um.hidden));
   });
+  // Clicking Settings while already on a settings page won't re-render — close by hand.
+  $('a', um).addEventListener('click', () => { um.hidden = true; });
   $('#logout-btn').addEventListener('click', async () => {
     await api('/logout', { method: 'POST', body: {} });
     state.me = null;
     boot();
   });
 }
+
+// One document-level closer for the user menu (registered once — shell() re-runs often).
+document.addEventListener('click', (e) => {
+  const um = $('#user-menu');
+  if (um && !um.hidden && !e.target.closest('.topbar-user')) {
+    um.hidden = true;
+    const b = $('#user-menu-btn');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const um = $('#user-menu');
+  if (um && !um.hidden) {
+    um.hidden = true;
+    const b = $('#user-menu-btn');
+    if (b) { b.setAttribute('aria-expanded', 'false'); b.focus(); }
+  }
+});
 
 /* ============================== auth views ============================== */
 
@@ -1251,16 +1277,6 @@ function viewKeys() {
   }
 
   let banner = '';
-  if (state.keys.length && state.services.length) {
-    const atRisk = state.services.filter((s) => serviceCoverage(s.id).usable.length === 1).length;
-    const uncovered = state.services.filter((s) => serviceCoverage(s.id).usable.length === 0).length;
-    const parts = [];
-    if (uncovered) parts.push(`${uncovered} service${uncovered > 1 ? 's are' : ' is'} not on any usable key`);
-    if (atRisk) parts.push(`${atRisk} service${atRisk > 1 ? 's rely' : ' relies'} on a single key`);
-    if (parts.length) {
-      banner = `<div class="notice-strip">${I.warn}<span>${parts.join(' · ')}</span><a href="#/settings/services">Review services</a></div>`;
-    }
-  }
 
   // Lost keys with registrations that haven't been revoked yet are urgent.
   const lostPending = state.keys
@@ -1298,23 +1314,22 @@ function viewKeys() {
         <option value="name" ${state.keySort === 'name' ? 'selected' : ''}>By name</option>
         <option value="vendor" ${state.keySort === 'vendor' ? 'selected' : ''}>By vendor</option>
       </select>
-      <button class="btn btn-sm" id="print-register" title="Print the full register">${I.print} Print</button>
     </div>` : '';
 
   return `
     <div class="page-head">
-      <h1>Key register</h1>
-      <span class="count">${String(state.keys.length).padStart(2, '0')} on file</span>
+      ${homeSeg('keys')}
       <div class="grow"></div>
       <div class="search-box">${I.search}<input id="key-search" type="text" placeholder="SEARCH KEYS / SERVICES…" value="${esc(state.keySearch)}"></div>
-      ${state.keys.length ? `<button class="btn" id="identify-key-btn" title="Plug a key in and find out which record it is">${I.scan} Which key?</button>` : ''}
+      ${state.keys.length ? `<button class="btn" id="identify-key-btn" title="Plug a key in, tap it, and Keeyo names it">${I.scan} Identify key</button>` : ''}
       <button class="btn btn-primary" data-add-key>${I.plus} Register key</button>
     </div>
     ${state.keys.length ? '<p class="page-sub">Every physical key on file, and what lives on it. Open a tag for its full record. <span class="kbd-hint">( / to search · N for new key )</span></p>' : ''}
     ${toolbar}
     ${coach}
     ${banner}
-    ${grid}`;
+    ${grid}
+    ${state.keys.length ? `<p class="list-total">${state.keys.length} key${state.keys.length === 1 ? '' : 's'} total</p>` : ''}`;
 }
 
 function bindKeys() {
@@ -1331,8 +1346,6 @@ function bindKeys() {
       render();
     });
   }
-  const printBtn = $('#print-register');
-  if (printBtn) printBtn.addEventListener('click', printRegister);
   const identifyBtn = $('#identify-key-btn');
   if (identifyBtn) identifyBtn.addEventListener('click', identifyModal);
   $$('[data-key-id]').forEach((card) =>
@@ -1695,13 +1708,19 @@ function serviceCoverage(svcId) {
   return { regs, keys, usable };
 }
 
-function viewServicesSection() {
+// The home view switcher: Keys | Services, one register, two ways in.
+function homeSeg(active) {
+  return `
+    <nav class="seg" aria-label="Register view">
+      <a href="#/keys" class="seg-btn ${active === 'keys' ? 'on' : ''}" ${active === 'keys' ? 'aria-current="page"' : ''}>${I.keyIcon}<span>Keys</span></a>
+      <a href="#/services" class="seg-btn ${active === 'services' ? 'on' : ''}" ${active === 'services' ? 'aria-current="page"' : ''}>${I.globe}<span>Services</span></a>
+    </nav>`;
+}
+
+function viewServicesHome() {
   const q = state.svcSearch.trim().toLowerCase();
   const services = state.services.filter((s) =>
     !q || s.name.toLowerCase().includes(q) || s.url.toLowerCase().includes(q));
-
-  const atRisk = state.services.filter((s) => serviceCoverage(s.id).usable.length === 1).length;
-  const uncovered = state.services.filter((s) => serviceCoverage(s.id).usable.length === 0).length;
 
   let list;
   if (state.services.length === 0) {
@@ -1712,62 +1731,118 @@ function viewServicesSection() {
         <button class="btn btn-primary" data-add-svc>${I.plus} Add a service</button>
       </div>`;
   } else {
-    const rows = services.map((svc) => {
-      const { regs, keys, usable } = serviceCoverage(svc.id);
-      const kinds = [...new Set(regs.map((r) => r.kind))];
-      const dots = keys.map((k) =>
-        `<span class="key-dot ${k.status === 'lost' || k.status === 'retired' ? 'lost' : ''}"
-          style="background:${esc(k.color)}" title="${esc(k.name)} (${STATUS_LABEL[k.status]})"
-          data-goto-key="${k.id}">${esc(k.name.charAt(0).toUpperCase())}</span>`).join('');
-      let badge = '';
-      if (usable.length === 0) badge = `<button type="button" class="chip danger chip-btn" data-fix-svc="${svc.id}" title="Register it on a key now">${I.warn} not on any key — fix</button>`;
-      else if (usable.length === 1) badge = `<button type="button" class="chip warn chip-btn" data-fix-svc="${svc.id}" title="Register it on a second key now">${I.warn} no backup — add one</button>`;
+    const cards = services.map((svc) => {
+      const { keys } = serviceCoverage(svc.id);
+      const open = state.svcOpen === svc.id;
+      const keyPills = keys.map((k) =>
+        `<span class="key-pill ${k.status === 'lost' || k.status === 'retired' ? 'lost' : ''}"
+          title="${STATUS_LABEL[k.status]}" data-goto-key="${k.id}">
+          <span class="kp-dot" style="background:${esc(k.color)}"></span>${esc(k.name)}</span>`).join('');
       return `
-        <div class="row clickable" data-svc-id="${svc.id}">
-          ${serviceIconHTML(svc)}
-          <div class="row-main">
-            <div class="row-title">${esc(svc.name)} ${badge}</div>
-            <div class="row-sub">${kinds.map((k) => KIND_LABEL[k]).join(' · ') || 'No registrations'}${svc.url ? ` · ${esc(domainOf(svc.url) || svc.url)}` : ''}</div>
+        <article class="svc-card ${open ? 'open' : ''}">
+          <div class="svc-head" role="button" tabindex="0" data-svc-toggle="${svc.id}" aria-expanded="${open}">
+            <div class="svc-head-main">
+              ${serviceIconHTML(svc)}
+              <div class="row-title">${esc(svc.name)}</div>
+              <span class="svc-caret">${I.chevron}</span>
+            </div>
+            <div class="svc-keys">${keyPills || '<span class="muted small">No keys yet</span>'}</div>
           </div>
-          <div class="key-dots">${dots}</div>
-        </div>`;
+          <div class="svc-body"><div class="svc-body-inner">
+            <div class="row-list">
+              ${svcKeyRows(svc.id) || '<div class="section-empty">Not registered on any key yet.</div>'}
+            </div>
+            ${svc.notes ? `<p class="small muted" style="white-space:pre-wrap;margin:10px 0 0">${esc(svc.notes)}</p>` : ''}
+            <div class="svc-actions">
+              <button type="button" class="btn btn-sm" data-edit-svc="${svc.id}">Edit</button>
+              <button type="button" class="btn btn-sm" data-reg-more="${svc.id}">${I.plus} Another key</button>
+              <div class="grow"></div>
+              <button type="button" class="btn btn-sm btn-danger" data-del-svc="${svc.id}">${I.trash} Delete</button>
+            </div>
+          </div></div>
+        </article>`;
     }).join('');
 
     list = `
-      <div class="summary-chips">
-        <span class="chip">${state.services.length} service${state.services.length !== 1 ? 's' : ''}</span>
-        ${atRisk ? `<span class="chip warn">${atRisk} without a backup key</span>` : ''}
-        ${uncovered ? `<span class="chip danger">${uncovered} not on any usable key</span>` : ''}
-      </div>
-      <div class="section"><div class="row-list">
-        ${rows || '<div class="section-empty">No services match your search.</div>'}
-      </div></div>`;
+      <div class="svc-grid">
+        ${cards || '<div class="section-empty">No services match your search.</div>'}
+      </div>`;
   }
 
   return `
-    <p class="page-sub" style="margin-top:0">Every service you've registered a key with, and which keys cover it.</p>
-    ${state.services.length ? `
-    <div class="section-toolbar">
-      <div class="search-box grow">${I.search}<input id="svc-search" type="text" placeholder="Search services…" value="${esc(state.svcSearch)}"></div>
+    <div class="page-head">
+      ${homeSeg('services')}
+      <div class="grow"></div>
+      ${state.services.length ? `<div class="search-box">${I.search}<input id="svc-search" type="text" placeholder="SEARCH SERVICES…" value="${esc(state.svcSearch)}"></div>` : ''}
       <button class="btn btn-primary" data-add-svc>${I.plus} Add service</button>
-    </div>` : ''}
-    ${list}`;
+    </div>
+    <p class="page-sub">Every service you've registered a key with — open one to see exactly which keys cover it.</p>
+    ${list}
+    ${state.services.length ? `<p class="list-total">${state.services.length} service${state.services.length === 1 ? '' : 's'} total</p>` : ''}`;
 }
 
 function bindServicesSection() {
   $$('[data-add-svc]').forEach((b) => b.addEventListener('click', () => serviceModal()));
-  $$('[data-svc-id]').forEach((row) =>
-    row.addEventListener('click', (e) => {
-      if (e.target.closest('[data-goto-key]') || e.target.closest('[data-fix-svc]')) return;
-      serviceDetailModal(Number(row.dataset.svcId));
-    }));
+
+  // Accordion: toggle classes in place (no re-render) so the expansion animates.
+  $$('[data-svc-toggle]').forEach((head) => {
+    const toggle = () => {
+      const card = head.closest('.svc-card');
+      const wasOpen = card.classList.contains('open');
+      $$('.svc-card.open').forEach((c) => {
+        c.classList.remove('open');
+        const h = $('[data-svc-toggle]', c);
+        if (h) h.setAttribute('aria-expanded', 'false');
+      });
+      if (!wasOpen) {
+        card.classList.add('open');
+        head.setAttribute('aria-expanded', 'true');
+        state.svcOpen = Number(head.dataset.svcToggle);
+      } else {
+        state.svcOpen = null;
+      }
+    };
+    head.addEventListener('click', (e) => {
+      if (e.target.closest('[data-goto-key]')) return;
+      toggle();
+    });
+    head.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+
   $$('[data-goto-key]').forEach((dot) =>
     dot.addEventListener('click', () => { location.hash = `#/keys/${dot.dataset.gotoKey}`; }));
-  $$('[data-fix-svc]').forEach((b) =>
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const svc = serviceById(Number(b.dataset.fixSvc));
+  $$('[data-goto]').forEach((b) =>
+    b.addEventListener('click', () => { location.hash = `#/keys/${b.dataset.goto}`; }));
+  $$('[data-edit-svc]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const svc = serviceById(Number(b.dataset.editSvc));
+      if (svc) serviceModal(svc);
+    }));
+  $$('[data-reg-more]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const svc = serviceById(Number(b.dataset.regMore));
       if (svc) pickKeyModal(svc);
+    }));
+  $$('[data-del-svc]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const svc = serviceById(Number(b.dataset.delSvc));
+      if (!svc) return;
+      const svcRegs = regsForService(svc.id);
+      state.svcOpen = null;
+      deleteWithUndo({
+        label: `Deleted ${svc.name}`,
+        apply: () => {
+          state.services = state.services.filter((s) => s.id !== svc.id);
+          state.registrations = state.registrations.filter((r) => r.serviceId !== svc.id);
+        },
+        revert: () => {
+          state.services.push(svc);
+          state.registrations.push(...svcRegs);
+        },
+        commit: (o) => api(`/services/${svc.id}`, { method: 'DELETE', ...o }),
+      });
     }));
   const search = $('#svc-search');
   if (search) {
@@ -1781,19 +1856,16 @@ function bindServicesSection() {
   }
 }
 
-function serviceDetailModal(svcId) {
-  const svc = serviceById(svcId);
-  if (!svc) return;
-  const { regs, usable } = serviceCoverage(svcId);
-
-  // One row per KEY (not per registration): a key holding both a passkey and
-  // a TOTP for this service shows once, with one chip per registration kind.
+// One row per KEY (not per registration): a key holding both a passkey and
+// a TOTP for this service shows once, with one chip per registration kind.
+function svcKeyRows(svcId) {
+  const { regs } = serviceCoverage(svcId);
   const byKey = new Map();
   for (const r of regs) {
     if (!byKey.has(r.keyId)) byKey.set(r.keyId, []);
     byKey.get(r.keyId).push(r);
   }
-  const regRows = [...byKey.entries()].map(([kid, keyRegs]) => {
+  return [...byKey.entries()].map(([kid, keyRegs]) => {
     const k = keyById(kid);
     const chips = keyRegs.map((r) =>
       `<span class="chip ${KIND_CHIP[r.kind]}">${KIND_LABEL[r.kind]}${r.revoked ? ' · revoked' : ''}</span>`).join(' ');
@@ -1814,15 +1886,18 @@ function serviceDetailModal(svcId) {
         ${k ? `<button type="button" class="btn btn-sm btn-ghost" data-goto="${k.id}">Open key</button>` : ''}
       </div>`;
   }).join('');
+}
+
+function serviceDetailModal(svcId) {
+  const svc = serviceById(svcId);
+  if (!svc) return;
+  const regRows = svcKeyRows(svcId);
 
   openModal({
     title: svc.name,
     code: `Record SV-${String(svc.id).padStart(3, '0')}`,
     submitLabel: 'Edit service',
     bodyHTML: `
-      ${usable.length <= 1 ? `<div class="warn-note">${I.warn}<span>${usable.length === 0
-        ? 'This service is not registered on any usable key. If you lose access, there is no hardware fallback.'
-        : 'Only one usable key covers this service. Consider registering a backup key.'}</span></div>` : ''}
       ${svc.url ? `<p class="small" style="margin-top:0"><a href="${esc(/^https?:\/\//i.test(svc.url) ? svc.url : 'https://' + svc.url)}" target="_blank" rel="noopener">${esc(svc.url)}</a></p>` : ''}
       ${svc.notes ? `<p class="small muted" style="white-space:pre-wrap">${esc(svc.notes)}</p>` : ''}
       <div class="section" style="margin:0"><div class="row-list">
@@ -1865,19 +1940,15 @@ function serviceDetailModal(svcId) {
 
 function viewSettings(section) {
   const tabs = [
-    ['services', 'Services'],
-    ['catalog', 'Catalog'],
     ['account', 'Account'],
     ['security', 'Security'],
     ['appearance', 'Appearance'],
+    ['catalog', 'Catalog'],
     ...(state.me.isAdmin ? [['users', 'Users']] : []),
-    ['about', 'About'],
   ];
 
   let content = '';
-  if (section === 'services') {
-    content = viewServicesSection();
-  } else if (section === 'catalog') {
+  if (section === 'catalog') {
     content = viewCatalogSection();
   } else if (section === 'appearance') {
     content = `
@@ -1899,7 +1970,6 @@ function viewSettings(section) {
               <span class="tt-name">${esc(t.name)}</span>
             </button>`).join('')}
         </div>
-        <p class="hint small muted" style="margin-top:12px">The topbar button cycles the color schemes.</p>
       </div></div>`;
   } else if (section === 'account') {
     content = `
@@ -1921,6 +1991,7 @@ function viewSettings(section) {
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <a class="btn" href="/api/export">Export data</a>
           <button class="btn" id="csv-btn">${I.download} Export CSV</button>
+          <button class="btn" id="pdf-btn" title="Opens the print dialog — choose “Save as PDF” or print it">${I.print} Export PDF</button>
           <button class="btn" id="import-btn">Import backup…</button>
           <input type="file" id="import-file" accept="application/json,.json" style="display:none">
         </div>
@@ -1959,19 +2030,7 @@ function viewSettings(section) {
         <div style="margin-top:12px"><button class="btn" id="add-user-btn">${I.plus} Add user</button></div>
       </div></div>`;
   } else {
-    content = `
-      <div class="settings-grid"><div class="settings-card">
-        <h2>About</h2>
-        <p class="desc">Keeyo — self-hosted hardware security key inventory. Keeyo stores names and notes only: no secrets, no TOTP seeds, no private keys ever leave your hardware keys.</p>
-        <div class="about-rows">
-          <div class="user-row"><span class="about-label">Website</span><a href="https://keeyo.org" target="_blank" rel="noopener">keeyo.org</a></div>
-          <div class="user-row"><span class="about-label">Documentation</span><a href="https://ans-ib.github.io/keeyo/" target="_blank" rel="noopener">User guide &amp; install docs</a></div>
-          <div class="user-row"><span class="about-label">Source &amp; issues</span><a href="https://github.com/ans-ib/keeyo" target="_blank" rel="noopener">github.com/ans-ib/keeyo</a></div>
-          <div class="user-row"><span class="about-label">Support</span><a href="mailto:support@keeyo.org">support@keeyo.org</a></div>
-          <div class="user-row"><span class="about-label">Security reports</span><a href="mailto:security@keeyo.org">security@keeyo.org</a></div>
-        </div>
-        <p class="hint small muted" style="margin-top:12px">AGPL-3.0 · Found a vulnerability? Use the security address or GitHub's private reporting — never a public issue.</p>
-      </div></div>`;
+    content = viewCatalogSection(); // unreachable: the router whitelists sections
   }
 
   return `
@@ -1983,11 +2042,6 @@ function viewSettings(section) {
 }
 
 function bindSettings(section) {
-  if (section === 'services') {
-    bindServicesSection();
-    return;
-  }
-
   if (section === 'catalog') {
     bindCatalogSection();
     return;
@@ -2031,6 +2085,7 @@ function bindSettings(section) {
 
   if (section === 'account') {
     $('#csv-btn').addEventListener('click', exportCSV);
+    $('#pdf-btn').addEventListener('click', printRegister);
     $('#import-btn').addEventListener('click', () => $('#import-file').click());
     $('#import-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];

@@ -10,12 +10,7 @@ Only the latest `latest` Docker image / main branch receives security updates.
 
 Please **do not** open a public GitHub issue.
 
-Instead, please use one of these private channels:
-
-* The GitHub Security Advisory **"Report a Vulnerability"** tab on this repository (preferred), or
-* Email **security@keeyo.org**.
-
-I will review your report and keep you updated on the patch progress.
+Instead, please use GitHub's private **[Report a Vulnerability](https://github.com/ans-ib/keeyo/security/advisories/new)** form on this repository. I will review your report and keep you updated on the patch progress.
 
 ## What makes a helpful report
 

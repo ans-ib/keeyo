@@ -1,6 +1,6 @@
 {
   "name": "keeyo",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Self-hosted inventory for your hardware security keys — track which key holds which passkey, 2FA registration and TOTP.",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -10,8 +10,7 @@
     "url": "https://github.com/ans-ib/keeyo.git"
   },
   "bugs": {
-    "url": "https://github.com/ans-ib/keeyo/issues",
-    "email": "support@keeyo.org"
+    "url": "https://github.com/ans-ib/keeyo/issues"
   },
   "engines": {
     "node": ">=22.13.0"

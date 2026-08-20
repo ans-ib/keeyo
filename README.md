@@ -17,9 +17,13 @@
 
 </div>
 
-If you're anything like me, you probably bought a YubiKey, got a couple of Token2 keys a bit later, and now you have absolutely no idea which key holds which passkey or which one has your GitHub TOTP. Keeyo fixes this: every physical key gets a digital asset tag, and every tag lists exactly what lives on it.
+It always starts with one security key. Then you buy a backup. Then you get another one for work. Before you know it, you're staring at a handful of identical USB sticks and NFC cards, frantically trying to remember which one unlocks your server and which one holds your primary passkeys.
 
-To be super clear upfront: **this app only stores names and notes.** No TOTP seeds, no private keys, no secrets — all the sensitive stuff stays on your hardware keys where it belongs.
+I built Keeyo to fix this exact nightmare.
+
+Keeyo gives every physical key a digital identity. It tracks exactly which accounts and passkeys live on which piece of plastic, eliminating the endless trial-and-error of testing them one by one.
+
+**Zero secrets stored.** To be crystal clear: Keeyo only holds metadata. No TOTP seeds, no private keys. The real security stays entirely on your hardware; Keeyo just tells you where to look.
 
 ## Documentation
 
@@ -85,7 +89,12 @@ Node.js + Express + SQLite (Node's built-in — zero native modules), vanilla JS
 
 ## Support & community
 
-Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Prefer email? Write to [support@keeyo.org](mailto:support@keeyo.org). Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go to [security@keeyo.org](mailto:security@keeyo.org) or the [private reporting flow](SECURITY.md), never public threads.
+Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go through the [private reporting flow](SECURITY.md), never public threads.
+
+Prefer email? The support address is below — as an image, so spam bots can't harvest it:
+
+<img src="docs/assets/email-support.png" alt="The support email address, shown as an image to keep spam bots away" width="330">
+
 
 ## Contributing
 
