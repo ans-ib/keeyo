@@ -90,6 +90,7 @@ async function api(path, opts = {}) {
     init.headers = { 'Content-Type': 'application/json' };
     init.body = JSON.stringify(opts.body);
   }
+  if (opts.keepalive) init.keepalive = true;
   const res = await fetch('/api' + path, init);
   let data = {};
   try { data = await res.json(); } catch { /* empty body */ }
@@ -737,12 +738,28 @@ function toast(message, type = 'success', { actionLabel, onAction, duration = 28
 }
 
 // Optimistic delete with a 5-second undo window: the item vanishes from the UI
-// immediately, the server call only happens when the window closes.
+// immediately, the server call only happens when the window closes. If the page
+// unloads mid-window the pending commits are flushed with keepalive fetches —
+// otherwise a refresh inside the window would silently resurrect the item.
+const pendingDeletes = new Set();
+window.addEventListener('pagehide', () => {
+  pendingDeletes.forEach((commit) => {
+    try { commit({ keepalive: true }); } catch { /* page is going away */ }
+  });
+  pendingDeletes.clear();
+});
+window.addEventListener('pageshow', (e) => {
+  // Restored from bfcache: pagehide already committed, re-sync the state.
+  if (e.persisted && state.me) refresh();
+});
+
 function deleteWithUndo({ label, apply, revert, commit }) {
   apply();
   render();
   let undone = false;
+  pendingDeletes.add(commit);
   const timer = setTimeout(async () => {
+    pendingDeletes.delete(commit);
     if (undone) return;
     try {
       await commit();
@@ -757,6 +774,7 @@ function deleteWithUndo({ label, apply, revert, commit }) {
     onAction: () => {
       undone = true;
       clearTimeout(timer);
+      pendingDeletes.delete(commit);
       revert();
       render();
     },
@@ -1559,7 +1577,7 @@ function bindKeyDetail(key) {
         label: `Deleted ${att.name}`,
         apply: () => { state.attachments = state.attachments.filter((a) => a.id !== att.id); },
         revert: () => { state.attachments.push(att); },
-        commit: () => api(`/attachments/${att.id}`, { method: 'DELETE' }),
+        commit: (o) => api(`/attachments/${att.id}`, { method: 'DELETE', ...o }),
       });
     }));
   $('[data-del-key]').addEventListener('click', async () => {
@@ -1598,7 +1616,7 @@ function bindKeyDetail(key) {
         label: `Removed ${svc ? svc.name : 'registration'}`,
         apply: () => { state.registrations = state.registrations.filter((r) => r.id !== reg.id); },
         revert: () => { state.registrations.push(reg); },
-        commit: () => api(`/registrations/${reg.id}`, { method: 'DELETE' }),
+        commit: (o) => api(`/registrations/${reg.id}`, { method: 'DELETE', ...o }),
       });
     }));
 }
@@ -1767,7 +1785,7 @@ function serviceDetailModal(svcId) {
             state.services.push(svc);
             state.registrations.push(...svcRegs);
           },
-          commit: () => api(`/services/${svc.id}`, { method: 'DELETE' }),
+          commit: (o) => api(`/services/${svc.id}`, { method: 'DELETE', ...o }),
         });
       });
     },
@@ -2211,7 +2229,7 @@ function bindCatalogSection() {
         label: `Removed ${item.value}`,
         apply: () => { state.catalog = state.catalog.filter((c) => c.id !== item.id); },
         revert: () => { state.catalog.push(item); },
-        commit: () => api(`/catalog/${item.id}`, { method: 'DELETE' }),
+        commit: (o) => api(`/catalog/${item.id}`, { method: 'DELETE', ...o }),
       });
     }));
 
