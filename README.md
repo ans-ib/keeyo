@@ -21,7 +21,7 @@ If you're anything like me, you probably bought a YubiKey, got a couple of Token
 
 To be super clear upfront: **this app only stores names and notes.** No TOTP seeds, no private keys, no secrets — all the sensitive stuff stays on your hardware keys where it belongs.
 
-##  Documentation
+## Documentation
 
 Full documentation is available at **[ans-ib.github.io/keeyo](https://ans-ib.github.io/keeyo/)**:
 
@@ -34,7 +34,7 @@ Full documentation is available at **[ans-ib.github.io/keeyo](https://ans-ib.git
 <img src="docs/assets/preview.svg" width="85%" alt="The Keeyo key register — asset-tag cards for each physical key">
 </div>
 
-##  Quick start
+## Quick start
 
 ```bash
 docker run -d --name keeyo \
@@ -61,7 +61,7 @@ volumes:
   keeyo-data:
 ```
 
-##  Key features
+## Key features
 
 - **Visual inventory** — a grid of asset-tag cards: color strips, tag numbers, status stamps (active / backup / lost / retired), schematic key artwork or your own photos.
 - **Scan to detect** — plug a key in, tap it, and Keeyo reads its fingerprint via WebAuthn and fills in vendor/model from the live FIDO registry (auto-updating, so new keys are recognized without app updates).
@@ -75,22 +75,22 @@ volumes:
 - **Print it** — physical asset tags (barcode + QR) and a full printable register sheet; CSV export too.
 - **The basics** — search, filters, keyboard shortcuts, undo on deletes, multi-user, two selectable design languages (the industrial *Register* look or a calm *Soft* mode) × five color schemes, JSON backups, installable PWA with offline reading.
 
-##  Security
+## Security
 
 Scrypt-hashed passwords, server-side sessions, strict CSP, full server-side WebAuthn verification, and spoof-proof rate limiting. Read the [security model](https://ans-ib.github.io/keeyo/security.html) — including the honest limitations — and see [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
-## 🛠 Tech
+## Tech
 
 Node.js + Express + SQLite (Node's built-in — zero native modules), vanilla JS frontend, no build step, one tiny container. The server's only outbound request is the FIDO device-registry refresh, and `KEEYO_OFFLINE=1` turns even that off.
 
-##  Support & community
+## Support & community
 
 Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Prefer email? Write to [support@keeyo.org](mailto:support@keeyo.org). Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go to [security@keeyo.org](mailto:security@keeyo.org) or the [private reporting flow](SECURITY.md), never public threads.
 
-##  Contributing
+## Contributing
 
 Issues and PRs are welcome — especially additions to the device catalog (`public/models.js`) and real-world testing with keys I don't own. Run the test suite with `npm test`.
 
-##  License
+## License
 
 [AGPL-3.0](LICENSE)
