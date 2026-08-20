@@ -5,7 +5,8 @@
 //   docker exec -it keeyo node scripts/reset-password.js admin newpass123
 //
 // Resets the password, signs out all of the user's sessions, and removes
-// their sign-in security keys (so a lost second factor can't lock them out).
+// every second factor — sign-in security keys, the authenticator app, and
+// recovery codes — so a lost second factor can't lock them out.
 
 const [, , username, password] = process.argv;
 
@@ -23,8 +24,9 @@ if (!user) {
   process.exit(1);
 }
 
-db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(password), user.id);
+db.prepare("UPDATE users SET password_hash = ?, totp_secret = '', totp_counter = 0 WHERE id = ?").run(auth.hashPassword(password), user.id);
 db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(user.id);
 const removed = db.prepare('DELETE FROM login_credentials WHERE user_id = ?').run(user.id).changes;
 
-console.log(`Password reset for "${user.username}". All sessions signed out, ${removed} sign-in key(s) removed.`);
+console.log(`Password reset for "${user.username}". All sessions signed out, ${removed} sign-in key(s) removed, authenticator app and recovery codes cleared.`);

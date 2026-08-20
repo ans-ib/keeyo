@@ -395,6 +395,121 @@ test('password change signs out other sessions', async () => {
   assert.equal((await call('/me')).status, 200, 'current session survives');
 });
 
+// Independent RFC 6238 implementation for the tests (HMAC-SHA1, 30s, 6 digits).
+function totpCode(secretB32, offsetSteps = 0) {
+  const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+  for (const ch of secretB32) {
+    value = (value << 5) | B32.indexOf(ch);
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + offsetSteps));
+  const mac = crypto.createHmac('sha1', Buffer.from(bytes)).update(msg).digest();
+  const off = mac[19] & 0x0f;
+  const code = ((mac[off] & 0x7f) << 24) | (mac[off + 1] << 16) | (mac[off + 2] << 8) | mac[off + 3];
+  return String(code % 1e6).padStart(6, '0');
+}
+
+let totpSecret;
+
+test('TOTP: setup, confirm, and sign in with an authenticator code', async () => {
+  const setup = await call('/account/totp/setup', { method: 'POST', body: {} });
+  assert.equal(setup.status, 200);
+  assert.match(setup.data.otpauth, /^otpauth:\/\/totp\/Keeyo:admin\?secret=/);
+  totpSecret = setup.data.secret;
+
+  const bad = await call('/account/totp/confirm', { body: { code: '000000' } });
+  assert.equal(bad.status, 400, 'a wrong code must not enable TOTP');
+  const ok = await call('/account/totp/confirm', { body: { code: totpCode(totpSecret) } });
+  assert.equal(ok.status, 200);
+  assert.equal((await call('/account/mfa')).data.totpEnabled, true);
+
+  await call('/logout', { method: 'POST', body: {} });
+  cookie = '';
+  const step1 = await call('/login', { body: { username: 'admin', password: 'testpass456' } });
+  assert.equal(step1.data.mfaRequired, true);
+  assert.equal(step1.data.methods.totp, true);
+  assert.equal(step1.data.methods.webauthn, true, 'the sign-in key from earlier is still enrolled');
+
+  // The confirm burned the current time step (codes are single-use), so the
+  // login below uses the next step — inside the server's ±1 accept window.
+  const okCode = totpCode(totpSecret, 1);
+  const wrongCode = okCode.slice(0, 5) + String((Number(okCode[5]) + 1) % 10);
+  const wrong = await call('/login/mfa', { body: { mfaToken: step1.data.mfaToken, code: wrongCode } });
+  assert.equal(wrong.status, 401);
+  const done = await call('/login/mfa', { body: { mfaToken: step1.data.mfaToken, code: okCode } });
+  assert.equal(done.status, 200, 'a wrong code must not invalidate the mfa token');
+  assert.equal((await call('/me')).data.username, 'admin');
+
+  // Replaying the accepted code on a fresh login is refused.
+  await call('/logout', { method: 'POST', body: {} });
+  cookie = '';
+  const step2 = await call('/login', { body: { username: 'admin', password: 'testpass456' } });
+  const replay = await call('/login/mfa', { body: { mfaToken: step2.data.mfaToken, code: okCode } });
+  assert.equal(replay.status, 401, 'TOTP codes are single-use');
+  // Every code inside the accept window is burned now — fall back to the
+  // security key on the same token, which is exactly what a real user would do.
+  const again = await call('/login/mfa', {
+    body: { mfaToken: step2.data.mfaToken, ...signAssertion(mfaAuthr, step2.data.challenge) },
+  });
+  assert.equal(again.status, 200, 'method fallback works on the same mfa token');
+});
+
+test('recovery codes: generate, single-use sign-in, regeneration invalidates', async () => {
+  const gen = await call('/account/recovery-codes', { method: 'POST', body: {} });
+  assert.equal(gen.status, 200);
+  assert.equal(gen.data.codes.length, 10);
+  assert.match(gen.data.codes[0], /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+
+  await call('/logout', { method: 'POST', body: {} });
+  cookie = '';
+  const step1 = await call('/login', { body: { username: 'admin', password: 'testpass456' } });
+  assert.equal(step1.data.methods.recovery, true);
+  const ok = await call('/login/mfa', { body: { mfaToken: step1.data.mfaToken, recoveryCode: gen.data.codes[0] } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.recoveryRemaining, 9);
+
+  await call('/logout', { method: 'POST', body: {} });
+  cookie = '';
+  const step2 = await call('/login', { body: { username: 'admin', password: 'testpass456' } });
+  const reuse = await call('/login/mfa', { body: { mfaToken: step2.data.mfaToken, recoveryCode: gen.data.codes[0] } });
+  assert.equal(reuse.status, 401, 'a spent recovery code must be dead');
+  const ok2 = await call('/login/mfa', { body: { mfaToken: step2.data.mfaToken, recoveryCode: gen.data.codes[1] } });
+  assert.equal(ok2.status, 200);
+
+  const gen2 = await call('/account/recovery-codes', { method: 'POST', body: {} });
+  await call('/logout', { method: 'POST', body: {} });
+  cookie = '';
+  const step3 = await call('/login', { body: { username: 'admin', password: 'testpass456' } });
+  const old = await call('/login/mfa', { body: { mfaToken: step3.data.mfaToken, recoveryCode: gen.data.codes[2] } });
+  assert.equal(old.status, 401, 'regeneration must invalidate the old set');
+  const fresh = await call('/login/mfa', { body: { mfaToken: step3.data.mfaToken, recoveryCode: gen2.data.codes[0] } });
+  assert.equal(fresh.status, 200);
+});
+
+test('recovery codes are wiped when the last second factor is removed', async () => {
+  const off = await call('/account/totp', { method: 'DELETE' });
+  assert.equal(off.status, 200);
+  let s = await call('/account/mfa');
+  assert.equal(s.data.totpEnabled, false);
+  assert.ok(s.data.recovery.remaining > 0, 'codes survive while a sign-in key remains');
+
+  const keys = await call('/login-keys');
+  for (const k of keys.data) await call(`/login-keys/${k.id}`, { method: 'DELETE' });
+  s = await call('/account/mfa');
+  assert.equal(s.data.recovery.total, 0, 'no second factor left, so no recovery codes');
+
+  const refused = await call('/account/recovery-codes', { method: 'POST', body: {} });
+  assert.equal(refused.status, 400, 'codes cannot exist without a second factor');
+});
+
 test('rate limiter cannot be bypassed by spoofing X-Forwarded-For', async () => {
   let status = 0;
   for (let i = 0; i < 11; i++) {

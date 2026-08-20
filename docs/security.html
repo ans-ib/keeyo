@@ -27,12 +27,14 @@
   <p class="lead">What Keeyo protects, how, and — just as important — what it deliberately doesn't.</p>
 
   <h2>Data model: metadata only</h2>
-  <p>Keeyo stores <b>names and notes</b>: which key is registered where, what it's called, when it was tested. It never stores TOTP seeds, private keys, or recovery codes. The single exception is the optional per-key <i>secret note</i>, which is explicitly opt-in and explained below.</p>
+  <p>Keeyo stores <b>names and notes</b>: which key is registered where, what it's called, when it was tested. It never stores your services' TOTP seeds, private keys, or recovery codes. The exceptions are opt-in and about Keeyo itself: the per-key <i>secret note</i> explained below, and the seed/codes for Keeyo's own sign-in second factor covered under Authentication.</p>
 
   <h2>Authentication</h2>
   <ul>
     <li>Passwords hashed with <b>scrypt</b> (per-user salt); sessions are random 256-bit server-side tokens in <code>httpOnly SameSite=Lax</code> cookies.</li>
     <li>Optional <b>security-key second factor</b>: WebAuthn assertions verified fully server-side — challenge, origin, RP ID hash, user-presence flag, and signature against the enrolled public key.</li>
+    <li>Optional <b>authenticator-app second factor</b> (RFC 6238 TOTP, ±1 step window, codes strictly single-use). Honesty note: unlike WebAuthn, this seed must live in the server's database — it's a convenience factor, one notch weaker than a hardware key.</li>
+    <li><b>Recovery codes</b>: ten single-use fallback codes, generated server-side with ~49 bits of entropy each and stored only as SHA-256 hashes. They are a second factor only — useless without the scrypt-protected password — and are wiped automatically when the last real factor is removed.</li>
     <li>Login rate limiting that ignores spoofable <code>X-Forwarded-For</code> headers unless <code>TRUST_PROXY=1</code> is deliberately set.</li>
     <li>Changing your password signs out every other session.</li>
   </ul>

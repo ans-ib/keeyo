@@ -2028,6 +2028,31 @@ html.theme-anim body * {
   .sub-nav a { border-left: none !important; border-top: 1px solid var(--border-soft); text-align: center; }
 }
 
+/* ---------- sign-in second factor (TOTP + recovery codes) ---------- */
+
+.mfa-alts { margin-top: 14px; text-align: center; font-size: 13px; }
+.mfa-alts .link-btn { margin: 0 4px; }
+
+.totp-setup-row { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin: 14px 0; }
+.totp-qr { background: #fff; padding: 10px; border: 1px solid var(--border); line-height: 0; border-radius: var(--radius); }
+.totp-qr svg { width: 132px; height: 132px; }
+.totp-secret { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+.totp-secret code {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em;
+  word-break: break-all; user-select: all; padding: 8px 10px;
+  background: var(--bg-soft); border: 1px dashed var(--border); border-radius: var(--radius);
+}
+
+.recovery-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; margin-top: 12px;
+}
+.recovery-grid code {
+  font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.08em;
+  padding: 7px 10px; text-align: center; user-select: all;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius);
+}
+@media (max-width: 480px) { .recovery-grid { grid-template-columns: 1fr; } }
+
 /* ============================================================
    SOFT SKIN — the calm design language.
    Same palettes, same layout — but rounded, quiet typography,

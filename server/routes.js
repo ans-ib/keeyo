@@ -5,6 +5,7 @@ const express = require('express');
 const { db, tx } = require('./db');
 const auth = require('./auth');
 const mds = require('./mds');
+const totp = require('./totp');
 
 const router = express.Router();
 
@@ -133,6 +134,16 @@ function issueChallenge(kind, fields = {}) {
 function consumeChallenge(token, kind) {
   const entry = pendingChallenges.get(String(token || ''));
   pendingChallenges.delete(String(token || ''));
+  if (!entry || entry.kind !== kind || entry.expires < Date.now()) {
+    throw new ApiError(400, 'Challenge expired — try again');
+  }
+  return entry;
+}
+
+// Like consumeChallenge but leaves the token alive — used by the code-based
+// second factors, where a mistyped code should not force a fresh sign-in.
+function peekChallenge(token, kind) {
+  const entry = pendingChallenges.get(String(token || ''));
   if (!entry || entry.kind !== kind || entry.expires < Date.now()) {
     throw new ApiError(400, 'Challenge expired — try again');
   }
@@ -275,6 +286,31 @@ router.post('/setup', (req, res) => {
 const MFA_DISABLED = process.env.KEEYO_DISABLE_MFA === '1' || process.env.KEEYO_DISABLE_MFA === 'true';
 const LOGIN_KEY_COLS = 'id, name, credential_id AS credentialId, alg, created_at AS createdAt';
 
+function totpSecretFor(userId) {
+  const row = db.prepare('SELECT totp_secret AS secret, totp_counter AS counter FROM users WHERE id = ?').get(userId);
+  return row && row.secret ? row : null;
+}
+
+function loginKeyCount(userId) {
+  return db.prepare('SELECT COUNT(*) AS n FROM login_credentials WHERE user_id = ?').get(userId).n;
+}
+
+// Recovery codes are high-entropy random secrets (never user-chosen), so a
+// plain SHA-256 at rest is enough — and they are only ever a second factor,
+// useless without the scrypt-protected password.
+function hashRecoveryCode(code) {
+  return crypto.createHash('sha256')
+    .update(String(code).toUpperCase().replace(/[^A-Z0-9]/g, ''))
+    .digest('hex');
+}
+
+function recoveryStatus(userId) {
+  const row = db.prepare(
+    "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN used_at = '' THEN 1 ELSE 0 END), 0) AS remaining FROM recovery_codes WHERE user_id = ?"
+  ).get(userId);
+  return { total: row.total, remaining: row.remaining };
+}
+
 router.post('/login', (req, res) => {
   const ip = req.ip || 'unknown';
   if (!auth.loginAllowed(ip)) throw new ApiError(429, 'Too many failed attempts. Try again in a few minutes.');
@@ -287,13 +323,24 @@ router.post('/login', (req, res) => {
     throw new ApiError(401, 'Wrong username or password');
   }
 
-  // Second factor: if the account has sign-in security keys, require one.
+  // Second factor: security key, authenticator app, or a recovery code.
   const loginKeys = MFA_DISABLED
     ? []
     : db.prepare('SELECT credential_id AS credentialId FROM login_credentials WHERE user_id = ?').all(user.id);
-  if (loginKeys.length > 0) {
+  const totpOn = !MFA_DISABLED && !!totpSecretFor(user.id);
+  if (loginKeys.length > 0 || totpOn) {
     const { token, challenge } = issueChallenge('mfa', { userId: user.id });
-    res.json({ mfaRequired: true, mfaToken: token, challenge, credentialIds: loginKeys.map((k) => k.credentialId) });
+    res.json({
+      mfaRequired: true,
+      mfaToken: token,
+      challenge,
+      credentialIds: loginKeys.map((k) => k.credentialId),
+      methods: {
+        webauthn: loginKeys.length > 0,
+        totp: totpOn,
+        recovery: recoveryStatus(user.id).remaining > 0,
+      },
+    });
     return;
   }
 
@@ -306,6 +353,42 @@ router.post('/login/mfa', (req, res) => {
   const ip = req.ip || 'unknown';
   if (!auth.loginAllowed(ip)) throw new ApiError(429, 'Too many failed attempts. Try again in a few minutes.');
   const body = req.body || {};
+
+  // Authenticator-app code. A wrong code counts toward the IP rate limit but
+  // keeps the token alive; the token dies only on success.
+  if (body.code !== undefined) {
+    const entry = peekChallenge(body.mfaToken, 'mfa');
+    const t = totpSecretFor(entry.userId);
+    const counter = t && totp.verifyCode(t.secret, body.code, t.counter);
+    if (!counter) {
+      auth.recordLoginFailure(ip);
+      throw new ApiError(401, 'Wrong code — check the app and try again');
+    }
+    db.prepare('UPDATE users SET totp_counter = ? WHERE id = ?').run(counter, entry.userId);
+    consumeChallenge(body.mfaToken, 'mfa');
+    auth.clearLoginFailures(ip);
+    auth.createSession(req, res, entry.userId);
+    res.json({ ok: true });
+    return;
+  }
+
+  // Single-use recovery code.
+  if (body.recoveryCode !== undefined) {
+    const entry = peekChallenge(body.mfaToken, 'mfa');
+    const row = db.prepare("SELECT id FROM recovery_codes WHERE user_id = ? AND code_hash = ? AND used_at = ''")
+      .get(entry.userId, hashRecoveryCode(body.recoveryCode));
+    if (!row) {
+      auth.recordLoginFailure(ip);
+      throw new ApiError(401, 'That recovery code is not valid — each one works only once');
+    }
+    db.prepare("UPDATE recovery_codes SET used_at = datetime('now') WHERE id = ?").run(row.id);
+    consumeChallenge(body.mfaToken, 'mfa');
+    auth.clearLoginFailures(ip);
+    auth.createSession(req, res, entry.userId);
+    res.json({ ok: true, recoveryRemaining: recoveryStatus(entry.userId).remaining });
+    return;
+  }
+
   const entry = consumeChallenge(body.mfaToken, 'mfa');
   const cred = db.prepare('SELECT credential_id, public_key, alg FROM login_credentials WHERE user_id = ? AND credential_id = ?')
     .get(entry.userId, String(body.credentialId || ''));
@@ -385,7 +468,73 @@ router.delete('/login-keys/:id', (req, res) => {
   const row = db.prepare('SELECT id FROM login_credentials WHERE user_id = ? AND id = ?').get(req.user.id, id);
   if (!row) throw new ApiError(404, 'Sign-in key not found');
   db.prepare('DELETE FROM login_credentials WHERE user_id = ? AND id = ?').run(req.user.id, id);
+  dropOrphanedRecoveryCodes(req.user.id);
   res.json({ ok: true });
+});
+
+// ---------- authenticator app (TOTP second factor) & recovery codes ----------
+
+// Recovery codes exist only as a fallback for a second factor; once the last
+// factor is gone they are dead weight (and a lingering bypass), so wipe them.
+function dropOrphanedRecoveryCodes(userId) {
+  if (loginKeyCount(userId) === 0 && !totpSecretFor(userId)) {
+    db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(userId);
+  }
+}
+
+router.get('/account/mfa', (req, res) => {
+  res.json({
+    totpEnabled: !!totpSecretFor(req.user.id),
+    loginKeys: loginKeyCount(req.user.id),
+    recovery: recoveryStatus(req.user.id),
+  });
+});
+
+const pendingTotp = new Map(); // userId -> { secret, expires }
+
+router.post('/account/totp/setup', (req, res) => {
+  if (pendingTotp.size > 1000) {
+    for (const [k, v] of pendingTotp) if (v.expires < Date.now()) pendingTotp.delete(k);
+  }
+  const secret = totp.generateSecret();
+  pendingTotp.set(req.user.id, { secret, expires: Date.now() + 10 * 60 * 1000 });
+  res.json({ secret, otpauth: totp.otpauthURL(req.user.username, secret) });
+});
+
+router.post('/account/totp/confirm', (req, res) => {
+  const pending = pendingTotp.get(req.user.id);
+  if (!pending || pending.expires < Date.now()) throw new ApiError(400, 'Setup expired — start again');
+  const counter = totp.verifyCode(pending.secret, (req.body || {}).code, 0);
+  if (!counter) throw new ApiError(400, 'That code does not match — check the app and try again');
+  pendingTotp.delete(req.user.id);
+  db.prepare('UPDATE users SET totp_secret = ?, totp_counter = ? WHERE id = ?').run(pending.secret, counter, req.user.id);
+  res.json({ ok: true });
+});
+
+router.delete('/account/totp', (req, res) => {
+  db.prepare("UPDATE users SET totp_secret = '', totp_counter = 0 WHERE id = ?").run(req.user.id);
+  dropOrphanedRecoveryCodes(req.user.id);
+  res.json({ ok: true });
+});
+
+router.post('/account/recovery-codes', (req, res) => {
+  if (loginKeyCount(req.user.id) === 0 && !totpSecretFor(req.user.id)) {
+    throw new ApiError(400, 'Enroll a sign-in key or authenticator app first — recovery codes are a fallback for a second factor');
+  }
+  const alphabet = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'; // no 0/O, 1/I/L, U/V lookalikes
+  const codes = [];
+  tx(() => {
+    db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(req.user.id);
+    const ins = db.prepare('INSERT INTO recovery_codes (user_id, code_hash) VALUES (?, ?)');
+    for (let i = 0; i < 10; i++) {
+      let s = '';
+      for (let j = 0; j < 10; j++) s += alphabet[crypto.randomInt(alphabet.length)];
+      const code = `${s.slice(0, 5)}-${s.slice(5)}`;
+      codes.push(code);
+      ins.run(req.user.id, hashRecoveryCode(code));
+    }
+  });
+  res.json({ codes });
 });
 
 // ---------- user management (admin) ----------

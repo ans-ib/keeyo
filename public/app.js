@@ -1059,21 +1059,87 @@ function renderLogin() {
   });
 }
 
-// Second factor: the account has sign-in security keys enrolled.
+// Second factor: security key, authenticator code, or a recovery code.
 function renderMfa(mfa) {
-  authShell(`
-    <p class="auth-sub">Second factor · security key required</p>
-    <div class="scan-stage" style="padding-top:6px">
-      <div class="scan-orb">${I.keyIcon}</div>
-      <p>Insert one of the security keys enrolled for this account and touch it when it blinks.</p>
-      <div class="form-error" id="mfa-error"></div>
-      <button class="btn btn-primary" id="mfa-btn" style="width:100%">Use security key</button>
-      <div><button type="button" class="link-btn" id="mfa-back">back to sign in</button></div>
-    </div>`);
+  const m = mfa.methods || { webauthn: true, totp: false, recovery: false };
+  renderMfaMethod(mfa, m.webauthn ? 'webauthn' : 'totp');
+}
+
+async function finishMfaLogin(res) {
+  if (typeof res.recoveryRemaining === 'number' && res.recoveryRemaining <= 2) {
+    toast(`Only ${res.recoveryRemaining} recovery code${res.recoveryRemaining === 1 ? '' : 's'} left — generate a new set in Settings`, 'error', { duration: 8000 });
+  }
+  await loadData();
+  location.hash = '#/keys';
+  render();
+}
+
+function renderMfaMethod(mfa, method) {
+  const m = mfa.methods || { webauthn: true, totp: false, recovery: false };
+  const alts = [];
+  if (m.webauthn && method !== 'webauthn') alts.push(['webauthn', 'use a security key']);
+  if (m.totp && method !== 'totp') alts.push(['totp', 'use an authenticator code']);
+  if (m.recovery && method !== 'recovery') alts.push(['recovery', 'use a recovery code']);
+  const altHTML = alts.map(([id, label]) =>
+    `<button type="button" class="link-btn" data-mfa-alt="${id}">${label}</button>`).join(' · ');
+
+  if (method === 'webauthn') {
+    authShell(`
+      <p class="auth-sub">Second factor · security key required</p>
+      <div class="scan-stage" style="padding-top:6px">
+        <div class="scan-orb">${I.keyIcon}</div>
+        <p>Insert one of the security keys enrolled for this account and touch it when it blinks.</p>
+        <div class="form-error" id="mfa-error"></div>
+        <button class="btn btn-primary" id="mfa-btn" style="width:100%">Use security key</button>
+        <div class="mfa-alts">${altHTML}</div>
+        <div><button type="button" class="link-btn" id="mfa-back">back to sign in</button></div>
+      </div>`);
+  } else {
+    const isTotp = method === 'totp';
+    authShell(`
+      <p class="auth-sub">Second factor · ${isTotp ? 'authenticator code' : 'recovery code'}</p>
+      <form id="mfa-code-form">
+        <div class="form-error"></div>
+        <div class="field"><label>${isTotp ? '6-digit code from your authenticator app' : 'Recovery code'}</label>
+          <input type="text" name="code" inputmode="${isTotp ? 'numeric' : 'text'}" autocomplete="one-time-code"
+            maxlength="${isTotp ? 6 : 12}" placeholder="${isTotp ? '000000' : 'XXXXX-XXXXX'}" required autofocus
+            spellcheck="false" autocapitalize="characters">
+          ${isTotp ? '' : '<div class="hint">Each recovery code signs you in exactly once.</div>'}</div>
+        <button class="btn btn-primary" type="submit" style="width:100%">Verify</button>
+        <div class="mfa-alts">${altHTML}</div>
+        <div style="text-align:center;margin-top:8px"><button type="button" class="link-btn" id="mfa-back">back to sign in</button></div>
+      </form>`);
+  }
+
+  $('#mfa-back').addEventListener('click', renderLogin);
+  $$('[data-mfa-alt]').forEach((b) =>
+    b.addEventListener('click', () => renderMfaMethod(mfa, b.dataset.mfaAlt)));
+
+  if (method !== 'webauthn') {
+    const form = $('#mfa-code-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const box = $('.form-error', form);
+      box.classList.remove('visible');
+      try {
+        const value = form.code.value.trim();
+        const res = await api('/login/mfa', {
+          body: method === 'totp'
+            ? { mfaToken: mfa.mfaToken, code: value }
+            : { mfaToken: mfa.mfaToken, recoveryCode: value },
+        });
+        await finishMfaLogin(res);
+      } catch (err) {
+        box.textContent = err.status === 400 ? 'Session expired — go back and sign in again.' : err.message;
+        box.classList.add('visible');
+        form.code.select();
+      }
+    });
+    return;
+  }
 
   const box = $('#mfa-error');
   const btn = $('#mfa-btn');
-  $('#mfa-back').addEventListener('click', renderLogin);
 
   async function attempt() {
     box.classList.remove('visible');
@@ -1089,7 +1155,7 @@ function renderMfa(mfa) {
         },
       });
       const r = assertion.response;
-      await api('/login/mfa', {
+      const res = await api('/login/mfa', {
         body: {
           mfaToken: mfa.mfaToken,
           credentialId: assertion.id,
@@ -1098,9 +1164,7 @@ function renderMfa(mfa) {
           signature: bufToB64url(r.signature),
         },
       });
-      await loadData();
-      location.hash = '#/keys';
-      render();
+      await finishMfaLogin(res);
     } catch (err) {
       box.textContent = err.name === 'NotAllowedError'
         ? 'Cancelled or timed out — try again.'
@@ -1848,11 +1912,16 @@ function viewSettings(section) {
         <p class="hint small muted" style="margin-top:10px">Changing your password signs out every other session.</p>
       </div>
       <div class="settings-card">
-        <h2>Sign-in security keys</h2>
-        <p class="desc">Protect Keeyo itself with a hardware key: once one is enrolled, signing in requires your password <b>and</b> a key tap.</p>
+        <h2>Sign-in security</h2>
+        <p class="desc">Protect Keeyo itself with a second factor on top of your password.</p>
+        <p class="appearance-label">Security keys</p>
         <div id="login-key-list"><p class="muted small">Loading…</p></div>
-        <div style="margin-top:12px"><button class="btn" id="add-login-key">${I.plus} Enroll a key</button></div>
-        <p class="hint small muted" style="margin-top:10px">Lost all sign-in keys? The server owner can start Keeyo with <code>KEEYO_DISABLE_MFA=1</code> or run <code>scripts/reset-password.js</code>.</p>
+        <div style="margin-top:10px"><button class="btn btn-sm" id="add-login-key">${I.plus} Enroll a key</button></div>
+        <p class="appearance-label">Authenticator app</p>
+        <div id="totp-status"><p class="muted small">Loading…</p></div>
+        <p class="appearance-label">Recovery codes</p>
+        <div id="recovery-status"><p class="muted small">Loading…</p></div>
+        <p class="hint small muted" style="margin-top:14px">Locked out completely? The server owner can start Keeyo with <code>KEEYO_DISABLE_MFA=1</code> or run <code>scripts/reset-password.js</code>.</p>
       </div>
       </div>`;
   } else if (section === 'users') {
@@ -1931,6 +2000,7 @@ function bindSettings(section) {
       }
     });
     loadLoginKeys();
+    loadMfaStatus();
     $('#add-login-key').addEventListener('click', () => loginKeyModal());
   }
 
@@ -2018,7 +2088,117 @@ async function loadLoginKeys() {
       await api(`/login-keys/${b.dataset.delLk}`, { method: 'DELETE' });
       toast('Sign-in key removed');
       loadLoginKeys();
+      loadMfaStatus();
     }));
+}
+
+async function loadMfaStatus() {
+  if (!$('#totp-status')) return;
+  const s = await api('/account/mfa');
+  const totpBox = $('#totp-status');
+  const recBox = $('#recovery-status');
+  if (!totpBox || !recBox) return;
+
+  totpBox.innerHTML = s.totpEnabled
+    ? `<div class="user-row"><span class="chip accent">enabled</span>
+        <span class="name muted small">Codes from your authenticator app work as a second factor.</span>
+        <button class="btn btn-sm" id="totp-off">Turn off</button></div>`
+    : `<div class="user-row"><span class="name muted small">Use any TOTP app (Aegis, Ente Auth, Google Authenticator…) as a second factor.</span>
+        <button class="btn btn-sm" id="totp-setup">Set up</button></div>`;
+
+  const hasFactor = s.totpEnabled || s.loginKeys > 0;
+  if (!hasFactor) {
+    recBox.innerHTML = '<p class="muted small">Enroll a security key or authenticator app first — recovery codes are the fallback when your second factor is unavailable.</p>';
+  } else {
+    const st = s.recovery;
+    recBox.innerHTML = `<div class="user-row">
+        <span class="name ${st.total ? '' : 'muted'} small">${st.total
+          ? `<b>${st.remaining}</b> of ${st.total} codes unused${st.remaining <= 2 ? ' — running low!' : ''}`
+          : 'None generated — without them, losing your second factor locks you out.'}</span>
+        <button class="btn btn-sm" id="gen-recovery">${st.total ? 'Regenerate' : 'Generate codes'}</button>
+      </div>`;
+  }
+
+  const setupBtn = $('#totp-setup');
+  if (setupBtn) setupBtn.addEventListener('click', totpSetupModal);
+  const offBtn = $('#totp-off');
+  if (offBtn) offBtn.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Turn off the authenticator app?',
+      message: 'Codes from the app will stop working for sign-in. If it was your only second factor, your recovery codes are wiped too and sign-in falls back to password only.',
+      confirmLabel: 'Turn off',
+    });
+    if (!ok) return;
+    await api('/account/totp', { method: 'DELETE' });
+    toast('Authenticator app turned off');
+    loadMfaStatus();
+  });
+  const genBtn = $('#gen-recovery');
+  if (genBtn) genBtn.addEventListener('click', async () => {
+    if (s.recovery.total) {
+      const ok = await confirmDialog({
+        title: 'Generate a new set?',
+        message: 'All of your current recovery codes stop working immediately and are replaced by ten new ones.',
+        confirmLabel: 'Regenerate',
+      });
+      if (!ok) return;
+    }
+    const { codes } = await api('/account/recovery-codes', { method: 'POST', body: {} });
+    showRecoveryCodes(codes);
+    loadMfaStatus();
+  });
+}
+
+async function totpSetupModal() {
+  let setup;
+  try {
+    setup = await api('/account/totp/setup', { method: 'POST', body: {} });
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+  openModal({
+    title: 'Set up authenticator app',
+    code: 'Form U-03 · authenticator',
+    submitLabel: 'Verify & enable',
+    bodyHTML: `
+      <p class="small" style="margin-top:0">Scan the code with your authenticator app, or enter the secret by hand. Then type the current 6-digit code to prove it took.</p>
+      <div class="totp-setup-row">
+        <div class="totp-qr">${qrSVG(setup.otpauth)}</div>
+        <div class="totp-secret"><span class="muted small">Manual entry secret</span><code>${esc(setup.secret)}</code></div>
+      </div>
+      <div class="field"><label>Code from the app</label>
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required></div>`,
+    onSubmit: async (form) => {
+      await api('/account/totp/confirm', { body: { code: form.code.value.trim() } });
+      toast('Authenticator app enabled');
+      loadMfaStatus();
+    },
+  });
+}
+
+function showRecoveryCodes(codes) {
+  openModal({
+    title: 'Your recovery codes',
+    code: 'Form U-04 · recovery',
+    submitLabel: 'I saved them',
+    bodyHTML: `
+      <p class="small" style="margin-top:0">Each code signs you in <b>once</b> if your second factor is lost or unavailable.
+        This is the only time they are shown — keep them in your password manager or print them.</p>
+      <div class="recovery-grid">${codes.map((c) => `<code>${esc(c)}</code>`).join('')}</div>
+      <button type="button" class="btn btn-sm" id="copy-codes" style="margin-top:12px">Copy all</button>`,
+    onOpen: (form) => {
+      $('#copy-codes', form).addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(codes.join('\n'));
+          toast('Copied — paste them somewhere safe');
+        } catch {
+          toast('Copy failed — select them by hand', 'error');
+        }
+      });
+    },
+    onSubmit: async (form, close) => close(),
+  });
 }
 
 function loginKeyModal() {
@@ -2068,6 +2248,7 @@ function loginKeyModal() {
       });
       toast('Sign-in key enrolled');
       loadLoginKeys();
+      loadMfaStatus();
     },
   });
 }

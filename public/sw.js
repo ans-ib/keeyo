@@ -4,7 +4,7 @@
 // the inventory (GET /api/data etc.) is network-first with a cached fallback so
 // the register stays readable offline. Nothing else is intercepted.
 
-const VERSION = 'keeyo-v1.4.1';
+const VERSION = 'keeyo-v1.5.0';
 
 const SHELL = [
   '/',

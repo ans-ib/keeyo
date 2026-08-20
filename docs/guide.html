@@ -71,7 +71,13 @@
   </ul>
 
   <h2>Protecting Keeyo itself</h2>
-  <p>Settings → Account → <b>Sign-in security keys</b>: enroll one or more hardware keys and logging in requires your password <i>plus</i> a key tap. Enroll at least two so losing one never locks you out — and know the <a href="install.html">recovery paths</a>.</p>
+  <p>Settings → Account → <b>Sign-in security</b>: add a second factor and logging in requires your password <i>plus</i> that factor.</p>
+  <ul>
+    <li><b>Security keys</b> — enroll one or more hardware keys; sign-in asks for a tap. Enroll at least two so losing one never locks you out.</li>
+    <li><b>Authenticator app</b> — any TOTP app (Aegis, Ente Auth, Google Authenticator, …) works as an alternative or additional factor. Handy where WebAuthn isn't available, e.g. plain-HTTP LAN deployments don't support key taps but codes still work.</li>
+    <li><b>Recovery codes</b> — generate ten single-use codes and store them safely (password manager, printed sheet). Each signs you in once when your second factor is unavailable. They're shown only at generation time, and regenerating replaces the whole set.</li>
+  </ul>
+  <p>If every factor is lost, the server owner still has the <a href="install.html">recovery paths</a>: <code>KEEYO_DISABLE_MFA=1</code> or <code>scripts/reset-password.js</code>.</p>
 
   <h2>Keyboard shortcuts</h2>
   <table>

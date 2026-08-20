@@ -68,7 +68,7 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
       <tr><td><code>REGISTRY_REFRESH_DAYS</code></td><td><code>7</code></td><td>How often the FIDO device registry is re-fetched.</td></tr>
       <tr><td><code>KEEYO_OFFLINE</code></td><td>unset</td><td>Set <code>1</code> to block all outbound requests (registry updates off).</td></tr>
       <tr><td><code>TRUST_PROXY</code></td><td>unset</td><td>Set <code>1</code> <b>only behind a reverse proxy</b> so <code>X-Forwarded-*</code> headers are honored.</td></tr>
-      <tr><td><code>KEEYO_DISABLE_MFA</code></td><td>unset</td><td>Set <code>1</code> to skip the security-key second factor at login (lockout recovery).</td></tr>
+      <tr><td><code>KEEYO_DISABLE_MFA</code></td><td>unset</td><td>Set <code>1</code> to skip every sign-in second factor — security keys and authenticator codes (lockout recovery).</td></tr>
     </tbody>
   </table>
 
@@ -89,7 +89,7 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
   <h2>Locked out?</h2>
   <p>On the server (or in the container):</p>
   <pre><code>docker exec -it keeyo node scripts/reset-password.js &lt;username&gt; &lt;new-password&gt;</code></pre>
-  <p>This resets the password, signs out all sessions and removes the account's sign-in security keys. Alternatively, start Keeyo once with <code>KEEYO_DISABLE_MFA=1</code> to skip the second factor.</p>
+  <p>This resets the password, signs out all sessions and removes every second factor on the account — sign-in security keys, the authenticator app, and recovery codes. Alternatively, start Keeyo once with <code>KEEYO_DISABLE_MFA=1</code> to skip the second factor.</p>
 </main>
 
 <footer class="footer">
