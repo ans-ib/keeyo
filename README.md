@@ -7,6 +7,7 @@
 **The self-hosted equipment register for your hardware security keys.**
 
 [![Version](https://img.shields.io/github/v/tag/ans-ib/keeyo?style=flat-square&label=version&color=d84315)](https://github.com/ans-ib/keeyo/tags)
+[![Website](https://img.shields.io/badge/website-keeyo.org-d84315?style=flat-square)](https://keeyo.org)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.13-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![Status](https://img.shields.io/badge/status-early--release-orange?style=flat-square)](https://github.com/ans-ib/keeyo/releases)
@@ -84,7 +85,7 @@ Node.js + Express + SQLite (Node's built-in — zero native modules), vanilla JS
 
 ##  Support & community
 
-Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go through the [private reporting flow](SECURITY.md), never public threads.
+Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Prefer email? Write to [support@keeyo.org](mailto:support@keeyo.org). Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go to [security@keeyo.org](mailto:security@keeyo.org) or the [private reporting flow](SECURITY.md), never public threads.
 
 ##  Contributing
 

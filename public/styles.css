@@ -2028,6 +2028,15 @@ html.theme-anim body * {
   .sub-nav a { border-left: none !important; border-top: 1px solid var(--border-soft); text-align: center; }
 }
 
+/* ---------- about tab ---------- */
+
+.about-rows { display: flex; flex-direction: column; }
+.about-rows .user-row { justify-content: flex-start; gap: 12px; }
+.about-label {
+  font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-faint); flex: 0 0 130px;
+}
+
 /* ---------- sign-in second factor (TOTP + recovery codes) ---------- */
 
 .mfa-alts { margin-top: 14px; text-align: center; font-size: 13px; }

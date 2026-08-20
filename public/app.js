@@ -906,7 +906,7 @@ async function boot() {
   }
 }
 
-const SETTINGS_SECTIONS = ['services', 'catalog', 'account', 'users', 'data', 'about'];
+const SETTINGS_SECTIONS = ['services', 'catalog', 'account', 'security', 'appearance', 'users', 'about'];
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, '');
@@ -924,6 +924,7 @@ let lastRouteKey = '';
 function render() {
   if (!state.me) return;
   const route = parseRoute();
+  if (route.page === 'settings' && route.section === 'data') route.section = 'account'; // Backup lives under Account now
   if (route.page === 'settings' &&
       (!SETTINGS_SECTIONS.includes(route.section) || (route.section === 'users' && !state.me.isAdmin))) {
     route.section = 'services';
@@ -1867,8 +1868,9 @@ function viewSettings(section) {
     ['services', 'Services'],
     ['catalog', 'Catalog'],
     ['account', 'Account'],
+    ['security', 'Security'],
+    ['appearance', 'Appearance'],
     ...(state.me.isAdmin ? [['users', 'Users']] : []),
-    ['data', 'Backup'],
     ['about', 'About'],
   ];
 
@@ -1877,12 +1879,11 @@ function viewSettings(section) {
     content = viewServicesSection();
   } else if (section === 'catalog') {
     content = viewCatalogSection();
-  } else if (section === 'account') {
+  } else if (section === 'appearance') {
     content = `
-      <div class="settings-grid">
-      <div class="settings-card">
+      <div class="settings-grid"><div class="settings-card">
         <h2>Appearance</h2>
-        <p class="desc">Two design languages, five color schemes — mix them however you like.</p>
+        <p class="desc">Two design languages, five color schemes — mix them however you like. Your choice is saved on this device.</p>
         <p class="appearance-label">Style</p>
         <div class="skin-row">
           ${SKINS.map((s) => `
@@ -1899,8 +1900,10 @@ function viewSettings(section) {
             </button>`).join('')}
         </div>
         <p class="hint small muted" style="margin-top:12px">The topbar button cycles the color schemes.</p>
-      </div>
-      <div class="settings-card">
+      </div></div>`;
+  } else if (section === 'account') {
+    content = `
+      <div class="settings-grid"><div class="settings-card">
         <h2>Account</h2>
         <p class="desc">Signed in as <b>${esc(state.me.username)}</b>${state.me.isAdmin ? ' (admin)' : ''}</p>
         <form id="pw-form">
@@ -1909,32 +1912,10 @@ function viewSettings(section) {
           <div class="field"><label>New password</label><input type="password" name="next" autocomplete="new-password" required></div>
           <button class="btn" type="submit">Change password</button>
         </form>
-        <p class="hint small muted" style="margin-top:10px">Changing your password signs out every other session.</p>
+        <p class="hint small muted" style="margin-top:10px">Changing your password signs out every other session.
+          Looking for two-factor sign-in? That moved to the <a href="#/settings/security">Security</a> tab.</p>
       </div>
       <div class="settings-card">
-        <h2>Sign-in security</h2>
-        <p class="desc">Protect Keeyo itself with a second factor on top of your password.</p>
-        <p class="appearance-label">Security keys</p>
-        <div id="login-key-list"><p class="muted small">Loading…</p></div>
-        <div style="margin-top:10px"><button class="btn btn-sm" id="add-login-key">${I.plus} Enroll a key</button></div>
-        <p class="appearance-label">Authenticator app</p>
-        <div id="totp-status"><p class="muted small">Loading…</p></div>
-        <p class="appearance-label">Recovery codes</p>
-        <div id="recovery-status"><p class="muted small">Loading…</p></div>
-        <p class="hint small muted" style="margin-top:14px">Locked out completely? The server owner can start Keeyo with <code>KEEYO_DISABLE_MFA=1</code> or run <code>scripts/reset-password.js</code>.</p>
-      </div>
-      </div>`;
-  } else if (section === 'users') {
-    content = `
-      <div class="settings-grid"><div class="settings-card">
-        <h2>Users</h2>
-        <p class="desc">Everyone gets their own private key inventory.</p>
-        <div id="user-list"><p class="muted small">Loading…</p></div>
-        <div style="margin-top:12px"><button class="btn" id="add-user-btn">${I.plus} Add user</button></div>
-      </div></div>`;
-  } else if (section === 'data') {
-    content = `
-      <div class="settings-grid"><div class="settings-card">
         <h2>Backup</h2>
         <p class="desc">Export your keys, services and registrations as a JSON file, or restore from a previous export.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1947,11 +1928,49 @@ function viewSettings(section) {
           Exports contain your secret notes in plain text — store the file safely.
           File attachments live only in the database: back up the <code>/data</code> volume to keep them.</p>
       </div></div>`;
+  } else if (section === 'security') {
+    content = `
+      <p class="page-sub" style="margin-top:0">Second factors for signing in to Keeyo itself — on top of your password.</p>
+      <div class="settings-grid">
+      <div class="settings-card">
+        <h2>Security keys</h2>
+        <p class="desc">Enroll a hardware key and signing in asks for a tap. Enroll at least two so losing one never locks you out.</p>
+        <div id="login-key-list"><p class="muted small">Loading…</p></div>
+        <div style="margin-top:12px"><button class="btn btn-sm" id="add-login-key">${I.plus} Enroll a key</button></div>
+      </div>
+      <div class="settings-card">
+        <h2>Authenticator app</h2>
+        <p class="desc">Six-digit codes as a second factor — works alongside or instead of a key, even where security keys can't (plain-HTTP setups).</p>
+        <div id="totp-status"><p class="muted small">Loading…</p></div>
+      </div>
+      <div class="settings-card">
+        <h2>Recovery codes</h2>
+        <p class="desc">Single-use fallback codes for the day your second factor isn't at hand. Store them somewhere safe.</p>
+        <div id="recovery-status"><p class="muted small">Loading…</p></div>
+        <p class="hint small muted" style="margin-top:14px">Locked out completely? The server owner can start Keeyo with <code>KEEYO_DISABLE_MFA=1</code> or run <code>scripts/reset-password.js</code>.</p>
+      </div>
+      </div>`;
+  } else if (section === 'users') {
+    content = `
+      <div class="settings-grid"><div class="settings-card">
+        <h2>Users</h2>
+        <p class="desc">Everyone gets their own private key inventory.</p>
+        <div id="user-list"><p class="muted small">Loading…</p></div>
+        <div style="margin-top:12px"><button class="btn" id="add-user-btn">${I.plus} Add user</button></div>
+      </div></div>`;
   } else {
     content = `
       <div class="settings-grid"><div class="settings-card">
         <h2>About</h2>
-        <p class="desc" style="margin-bottom:0">Keeyo — self-hosted hardware security key inventory. Keeyo stores names and notes only: no secrets, no TOTP seeds, no private keys ever leave your hardware keys.</p>
+        <p class="desc">Keeyo — self-hosted hardware security key inventory. Keeyo stores names and notes only: no secrets, no TOTP seeds, no private keys ever leave your hardware keys.</p>
+        <div class="about-rows">
+          <div class="user-row"><span class="about-label">Website</span><a href="https://keeyo.org" target="_blank" rel="noopener">keeyo.org</a></div>
+          <div class="user-row"><span class="about-label">Documentation</span><a href="https://ans-ib.github.io/keeyo/" target="_blank" rel="noopener">User guide &amp; install docs</a></div>
+          <div class="user-row"><span class="about-label">Source &amp; issues</span><a href="https://github.com/ans-ib/keeyo" target="_blank" rel="noopener">github.com/ans-ib/keeyo</a></div>
+          <div class="user-row"><span class="about-label">Support</span><a href="mailto:support@keeyo.org">support@keeyo.org</a></div>
+          <div class="user-row"><span class="about-label">Security reports</span><a href="mailto:security@keeyo.org">security@keeyo.org</a></div>
+        </div>
+        <p class="hint small muted" style="margin-top:12px">AGPL-3.0 · Found a vulnerability? Use the security address or GitHub's private reporting — never a public issue.</p>
       </div></div>`;
   }
 
@@ -1974,7 +1993,7 @@ function bindSettings(section) {
     return;
   }
 
-  if (section === 'account') {
+  if (section === 'appearance') {
     $$('[data-theme-pick]').forEach((b) =>
       b.addEventListener('click', () => {
         applyTheme(b.dataset.themePick);
@@ -1985,6 +2004,9 @@ function bindSettings(section) {
         applySkin(b.dataset.skinPick);
         $$('[data-skin-pick]').forEach((x) => x.classList.toggle('on', x === b));
       }));
+  }
+
+  if (section === 'account') {
     $('#pw-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
@@ -1999,12 +2021,15 @@ function bindSettings(section) {
         box.classList.add('visible');
       }
     });
+  }
+
+  if (section === 'security') {
     loadLoginKeys();
     loadMfaStatus();
     $('#add-login-key').addEventListener('click', () => loginKeyModal());
   }
 
-  if (section === 'data') {
+  if (section === 'account') {
     $('#csv-btn').addEventListener('click', exportCSV);
     $('#import-btn').addEventListener('click', () => $('#import-file').click());
     $('#import-file').addEventListener('change', async (e) => {
@@ -2103,7 +2128,7 @@ async function loadMfaStatus() {
     ? `<div class="user-row"><span class="chip accent">enabled</span>
         <span class="name muted small">Codes from your authenticator app work as a second factor.</span>
         <button class="btn btn-sm" id="totp-off">Turn off</button></div>`
-    : `<div class="user-row"><span class="name muted small">Use any TOTP app (Aegis, Ente Auth, Google Authenticator…) as a second factor.</span>
+    : `<div class="user-row"><span class="name muted small">Not set up.</span>
         <button class="btn btn-sm" id="totp-setup">Set up</button></div>`;
 
   const hasFactor = s.totpEnabled || s.loginKeys > 0;
@@ -2308,13 +2333,6 @@ function viewCatalogSection() {
     <p class="page-sub" style="margin-top:0">Everything the key form's dropdowns offer. Custom entries you type in the key form land here automatically — built-in ones ${I.lock} are part of the app and can't be removed.</p>
     <div class="settings-grid">
       <div class="settings-card">
-        <h2>Device registry</h2>
-        <p class="desc">The fingerprint database behind “Detect my key”. Keeyo keeps it fresh automatically from the FIDO Alliance metadata service (where vendors publish every certified authenticator) plus the community passkey registry — so brand-new devices are recognized without updating the app.</p>
-        <div id="registry-status" class="muted small">Checking…</div>
-        ${state.me.isAdmin ? `<div style="margin-top:12px"><button class="btn btn-sm" id="registry-refresh">${I.scan} Refresh now</button></div>` : ''}
-      </div>
-
-      <div class="settings-card">
         <h2>Vendors</h2>
         <div class="tag-cloud">${vendorTags}</div>
         <form class="tag-add" data-cat-type="vendor">
@@ -2351,6 +2369,13 @@ function viewCatalogSection() {
           <button class="btn btn-sm" type="submit">${I.plus} Add</button>
         </form>
         <p class="hint small muted" style="margin-top:12px">Removing an entry never changes keys that already use it — it just leaves the pickers.</p>
+      </div>
+
+      <div class="settings-card">
+        <h2>Device recognition</h2>
+        <p class="desc">How “Detect my key” knows what you plugged in: Keeyo keeps a list of device fingerprints and updates it automatically from the official FIDO directory. You never need to touch this — it's shown here so you can see it's working.</p>
+        <div id="registry-status" class="muted small">Checking…</div>
+        ${state.me.isAdmin ? `<div style="margin-top:12px"><button class="btn btn-sm" id="registry-refresh">${I.scan} Refresh now</button></div>` : ''}
       </div>
     </div>`;
 }
