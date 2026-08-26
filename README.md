@@ -91,7 +91,7 @@ Node.js + Express + SQLite (Node's built-in — zero native modules), vanilla JS
 
 Questions, ideas, or want to show off your key register? Head to [**GitHub Discussions**](https://github.com/ans-ib/keeyo/discussions) — Q&A for setup help, Ideas for feature requests, Show and tell for your setups. Bugs go in [Issues](https://github.com/ans-ib/keeyo/issues); security problems go through the [private reporting flow](SECURITY.md), never public threads.
 
-Prefer email? The support address is below — as an image, so spam bots can't harvest it:
+Prefer email? The support address is below:
 
 <img src="docs/assets/email-support.png" alt="The support email address, shown as an image to keep spam bots away" width="330">
 
