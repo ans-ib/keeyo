@@ -1,0 +1,104 @@
+:root {
+  --bg: #f5efe8;
+  --bg-soft: #efe8e0;
+  --panel: #fbf8f4;
+  --panel-2: #efe7de;
+
+  --text: #2a231d;
+  --text-dim: #6f655b;
+  --text-faint: #9a8f84;
+  --border: #e6ddd2;
+  --border-strong: #d3c7b9;
+
+  --accent: #8a4f3d;
+  --accent-soft: #f1e1d8;
+  --accent-ink: #ffffff;
+  --danger: #a4322a;
+  --danger-soft: #f5e2de;
+  --warn: #8f6420;
+  --warn-soft: #f6ead3;
+  --ok: #34734a;
+  --ok-soft: #e0eee3;
+  --info: #3b5b97;
+  --info-soft: #e1e8f5;
+  --gold: #b08a3e;
+  --mark-bg: #25212b;
+
+  --font-sans: -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif;
+  --font-mono: 'Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow: 0 1px 2px rgba(42, 35, 29, 0.05);
+  --shadow-lg: 0 10px 30px rgba(42, 35, 29, 0.12), 0 2px 6px rgba(42, 35, 29, 0.06);
+  --rail-width: 76px;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur-fast: 0.12s;
+  --dur: 0.2s;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #1b1815;
+  --bg-soft: #17140f;
+  --panel: #232019;
+  --panel-2: #2d2923;
+
+  --text: #ece5dc;
+  --text-dim: #b1a698;
+  --text-faint: #7d7267;
+  --border: #363028;
+  --border-strong: #4a4339;
+
+  --accent: #d69a84;
+  --accent-soft: rgba(214, 154, 132, 0.16);
+  --accent-ink: #1b1815;
+  --danger: #e2685d;
+  --danger-soft: rgba(226, 104, 93, 0.16);
+  --warn: #d7ab55;
+  --warn-soft: rgba(215, 171, 85, 0.16);
+  --ok: #7cc48f;
+  --ok-soft: rgba(124, 196, 143, 0.16);
+  --info: #86a5e0;
+  --info-soft: rgba(134, 165, 224, 0.16);
+  --gold: #c9a35a;
+  --mark-bg: #3a3542;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+html { scrollbar-gutter: stable; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+::selection { background: var(--accent-soft); }
+
+code { font-family: var(--font-mono); font-size: 0.92em; }
+
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+
+[hidden] { display: none !important; }
+
+.muted { color: var(--text-faint); }
+.small { font-size: 13px; }
+.grow { flex: 1; }

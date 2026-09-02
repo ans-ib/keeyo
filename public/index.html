@@ -8,8 +8,53 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#eae5d8">
-  <link rel="stylesheet" href="styles.css">
-  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/overlays.css">
+  <link rel="stylesheet" href="css/keys.css">
+  <link rel="stylesheet" href="css/services.css">
+  <link rel="stylesheet" href="css/settings.css">
+  <link rel="stylesheet" href="css/auth.css">
+  <link rel="stylesheet" href="css/scan.css">
+  <link rel="stylesheet" href="css/print.css">
+  <link rel="stylesheet" href="css/motion.css">
+  <script src="js/theme-init.js"></script>
+  <link rel="modulepreload" href="js/catalog.js">
+  <link rel="modulepreload" href="js/data/aaguids.js">
+  <link rel="modulepreload" href="js/data/models.js">
+  <link rel="modulepreload" href="js/forms/identify.js">
+  <link rel="modulepreload" href="js/forms/key-form.js">
+  <link rel="modulepreload" href="js/forms/registration-form.js">
+  <link rel="modulepreload" href="js/forms/service-form.js">
+  <link rel="modulepreload" href="js/icons.js">
+  <link rel="modulepreload" href="js/lib/api.js">
+  <link rel="modulepreload" href="js/lib/dom.js">
+  <link rel="modulepreload" href="js/lib/secret-notes.js">
+  <link rel="modulepreload" href="js/lib/webauthn.js">
+  <link rel="modulepreload" href="js/main.js">
+  <link rel="modulepreload" href="js/print-export.js">
+  <link rel="modulepreload" href="js/router.js">
+  <link rel="modulepreload" href="js/state.js">
+  <link rel="modulepreload" href="js/theme.js">
+  <link rel="modulepreload" href="js/ui/copy-field.js">
+  <link rel="modulepreload" href="js/ui/forms.js">
+  <link rel="modulepreload" href="js/ui/key-art.js">
+  <link rel="modulepreload" href="js/ui/modal.js">
+  <link rel="modulepreload" href="js/ui/rows.js">
+  <link rel="modulepreload" href="js/ui/service-icon.js">
+  <link rel="modulepreload" href="js/ui/shell.js">
+  <link rel="modulepreload" href="js/ui/toast.js">
+  <link rel="modulepreload" href="js/ui/undo.js">
+  <link rel="modulepreload" href="js/views/auth.js">
+  <link rel="modulepreload" href="js/views/key-detail.js">
+  <link rel="modulepreload" href="js/views/keys.js">
+  <link rel="modulepreload" href="js/views/services.js">
+  <link rel="modulepreload" href="js/views/settings-catalog.js">
+  <link rel="modulepreload" href="js/views/settings-security.js">
+  <link rel="modulepreload" href="js/views/settings-tokens.js">
+  <link rel="modulepreload" href="js/views/settings.js">
 </head>
 <body>
   <div id="app" class="app-root">
@@ -25,9 +70,7 @@
   <div id="modal-root"></div>
   <div id="toast-root" aria-live="polite"></div>
   <div id="print-root"></div>
-  <script src="vendor/qrcode.js"></script>
-  <script src="models.js"></script>
-  <script src="aaguids.js"></script>
-  <script src="app.js"></script>
+  <script src="js/vendor/qrcode.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

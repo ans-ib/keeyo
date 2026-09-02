@@ -1,0 +1,48 @@
+.auth-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 30px 32px 28px;
+  box-shadow: var(--shadow-lg);
+  animation: riseIn 0.35s cubic-bezier(0.22, 0.9, 0.35, 1) both;
+}
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+
+.auth-logo svg { width: 40px; height: 40px; display: block; }
+
+.auth-sub { color: var(--text-dim); font-size: 14px; margin: 0 0 20px; }
+
+.auth-card .btn-primary { width: 100%; padding: 10px; margin-top: 6px; }
+
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 12px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+
+.sso-divider::before, .sso-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+.sso-btn { display: flex; justify-content: center; width: 100%; }
+
+.mfa-alts { margin-top: 14px; text-align: center; font-size: 13px; color: var(--text-faint); }
+.mfa-alts .link-btn { margin: 0 4px; }

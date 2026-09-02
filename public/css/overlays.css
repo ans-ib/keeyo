@@ -1,0 +1,90 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 24, 20, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 7vh 18px 18px;
+  z-index: 100;
+  overflow-y: auto;
+  animation: fadeIn 0.15s ease;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  animation: modalPop 0.22s cubic-bezier(0.2, 1.1, 0.4, 1) both;
+}
+
+.modal.modal-wide { max-width: 560px; }
+
+.modal-overlay.closing { animation: fadeOut 0.16s ease forwards; }
+.modal-overlay.closing .modal { animation: modalOut 0.15s ease forwards; }
+
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes fadeOut { to { opacity: 0; } }
+@keyframes modalOut { to { opacity: 0; transform: translateY(8px); } }
+
+.modal-head { display: flex; align-items: center; gap: 12px; padding: 20px 22px 12px; }
+.modal-head h2 { margin: 0; font-size: 17px; flex: 1; }
+
+.modal-body { padding: 4px 22px 4px; }
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 20px;
+  margin-top: 8px;
+}
+
+.modal-foot .left { margin-right: auto; }
+
+#toast-root {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 200;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  animation: toastIn 0.22s cubic-bezier(0.2, 1.1, 0.4, 1) both;
+  max-width: 360px;
+}
+
+.toast.error { background: var(--danger); color: #fff; }
+
+.toast-action {
+  margin-left: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  color: inherit;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toast-action:hover { background: rgba(255, 255, 255, 0.15); }
+
+@media (max-width: 720px) {
+  #toast-root { left: 16px; right: 16px; bottom: 90px; }
+  .toast { max-width: none; }
+}

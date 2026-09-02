@@ -1,0 +1,86 @@
+.svc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 480px) { .svc-grid { grid-template-columns: 1fr; } }
+
+.svc-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur-fast);
+}
+
+.svc-card.open { box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
+
+.svc-head {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-lg);
+}
+
+.svc-head-main { display: flex; align-items: center; gap: 12px; }
+.svc-head-main .svc-caret { margin-left: auto; }
+.svc-head:hover .row-title { color: var(--accent); }
+.svc-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.svc-keys { display: flex; flex-wrap: nowrap; gap: 7px; min-height: 26px; overflow: hidden; }
+
+.key-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-radius: 999px;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s, background 0.12s;
+}
+
+.key-pill.more { flex-shrink: 0; color: var(--text-faint); }
+
+.key-pill:hover { color: var(--text); background: var(--accent-soft); }
+.key-pill.lost { opacity: 0.55; text-decoration: line-through; }
+.kp-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+
+.svc-caret { display: inline-flex; color: var(--text-faint); transition: transform 0.25s; flex: 0 0 auto; }
+.svc-card.open .svc-caret { transform: rotate(180deg); }
+
+.svc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s var(--ease);
+}
+
+.svc-card.open .svc-body { grid-template-rows: 1fr; }
+
+.svc-body-inner {
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 16px;
+  border-top: 1px solid transparent;
+  transition: padding 0.28s var(--ease);
+}
+
+.svc-card.open .svc-body-inner { padding: 14px 16px 16px; border-top: 1px solid var(--border); }
+
+.svc-body .row { padding-left: 0; padding-right: 0; }
+.svc-body .row:hover { background: transparent; }
+
+.svc-actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; }

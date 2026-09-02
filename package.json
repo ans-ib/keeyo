@@ -1,6 +1,6 @@
 {
   "name": "keeyo",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "description": "Self-hosted inventory for your hardware security keys — track which key holds which passkey, 2FA registration and TOTP.",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -17,9 +17,13 @@
   },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning --test"
+    "dev": "node --disable-warning=ExperimentalWarning --watch-path=server server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }

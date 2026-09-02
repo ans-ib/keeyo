@@ -46,6 +46,8 @@
   </ul>
   <p>The same warnings surface as a strip on the dashboard so gaps don't hide.</p>
 
+  <p>Every service can carry an icon: upload your own, or search the <a href="https://selfh.st/icons/">selfh.st</a> and <a href="https://github.com/homarr-labs/dashboard-icons">Dashboard Icons</a> catalogs by name, or pull the site’s favicon through DuckDuckGo. Catalog icons load from jsDelivr in your browser; uploads are stored with the service.</p>
+
   <h2>Losing a key</h2>
   <p>Set the key's status to <b>lost</b>. Its registrations become a <b>revocation checklist</b> — go to each service, remove the key there, and tick it off. The dashboard shows a hazard strip until the checklist is clean. If the key turns up later, the identify feature will recognize it and remind you it was marked lost.</p>
 
@@ -78,6 +80,15 @@
     <li><b>Recovery codes</b> — generate ten single-use codes and store them safely (password manager, printed sheet). Each signs you in once when your second factor is unavailable. They're shown only at generation time, and regenerating replaces the whole set.</li>
   </ul>
   <p>If every factor is lost, the server owner still has the <a href="install.html">recovery paths</a>: <code>KEEYO_DISABLE_MFA=1</code> or <code>scripts/reset-password.js</code>.</p>
+
+  <h2>Access tokens</h2>
+  <p>Settings → <b>Access tokens</b> creates personal tokens for scripts and integrations. Send one as <code>Authorization: Bearer keeyo_…</code> and the API answers as you, for example <code>GET /api/data</code> for the whole register or <code>GET /api/export</code> for a backup.</p>
+  <ul>
+    <li><b>Scope</b> — <i>Read only</i> tokens can only fetch; <i>Read &amp; write</i> tokens can also add and change keys, services and registrations.</li>
+    <li><b>Never for account settings</b> — a token cannot change your password or email, touch second factors, create other tokens, or reach admin pages. Those need a real sign-in.</li>
+    <li><b>Shown once</b> — Keeyo stores only a hash. Give each script its own token so revoking one never breaks another, and set an expiry when the job is temporary.</li>
+  </ul>
+  <p>Resetting a password with <code>scripts/reset-password.js</code> revokes every token on that account.</p>
 
   <h2>Keyboard shortcuts</h2>
   <table>

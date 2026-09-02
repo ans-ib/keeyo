@@ -1,13 +1,5 @@
 'use strict';
 
-// Emergency password reset — run on the server (or inside the container):
-//   node scripts/reset-password.js <username> <new-password>
-//   docker exec -it keeyo node scripts/reset-password.js admin newpass123
-//
-// Resets the password, signs out all of the user's sessions, and removes
-// every second factor — sign-in security keys, the authenticator app, and
-// recovery codes — so a lost second factor can't lock them out.
-
 const [, , username, password] = process.argv;
 
 if (!username || !password || password.length < 8) {
@@ -16,7 +8,7 @@ if (!username || !password || password.length < 8) {
 }
 
 const { db } = require('../server/db');
-const auth = require('../server/auth');
+const { hashPassword } = require('../server/lib/password');
 
 const user = db.prepare('SELECT id, username FROM users WHERE username = ?').get(username.toLowerCase());
 if (!user) {
@@ -24,9 +16,10 @@ if (!user) {
   process.exit(1);
 }
 
-db.prepare("UPDATE users SET password_hash = ?, totp_secret = '', totp_counter = 0 WHERE id = ?").run(auth.hashPassword(password), user.id);
+db.prepare("UPDATE users SET password_hash = ?, totp_secret = '', totp_counter = 0 WHERE id = ?").run(hashPassword(password), user.id);
 db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
 db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(user.id);
 const removed = db.prepare('DELETE FROM login_credentials WHERE user_id = ?').run(user.id).changes;
+const tokens = db.prepare('DELETE FROM access_tokens WHERE user_id = ?').run(user.id).changes;
 
-console.log(`Password reset for "${user.username}". All sessions signed out, ${removed} sign-in key(s) removed, authenticator app and recovery codes cleared.`);
+console.log(`Password reset for "${user.username}". All sessions signed out, ${removed} sign-in key(s) removed, authenticator app and recovery codes cleared, ${tokens} access token(s) revoked.`);

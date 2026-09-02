@@ -76,9 +76,11 @@ volumes:
 - **Tap-to-reveal secret notes** — store a key's PIN so it's revealed only by physically tapping that exact key (verified server-side). On PRF-capable keys the note is **end-to-end encrypted** with a key derived from the hardware itself — the server stores ciphertext only.
 - **Sign-in 2FA** — protect Keeyo itself with a hardware key, an authenticator app (TOTP), or both — plus single-use recovery codes so a lost second factor never locks you out.
 - **Single sign-on** — standard OIDC with PKCE, so Authentik, Authelia, Keycloak and friends plug straight in ([setup docs](https://ans-ib.github.io/keeyo/install.html)).
+- **Email & password reset** — a built-in, dependency-free SMTP client (no relay container) sends single-use reset links; configure it from the admin panel or env vars.
+- **Access tokens** — scoped personal tokens (read-only or read & write) for scripts and integrations, shown once and stored hashed.
 - **Health check-ins & logbook** — "tested" stamps with 6-month staleness nudges, and an append-only per-key history.
 - **Print it** — physical asset tags (barcode + QR) and a full printable register sheet; CSV export too.
-- **The basics** — search, filters, keyboard shortcuts, undo on deletes, multi-user, two selectable design languages (the industrial *Register* look or a calm *Soft* mode) × five color schemes, JSON backups, installable PWA with offline reading.
+- **The basics** — search, filters, keyboard shortcuts, undo on deletes, multi-user, light & dark themes, JSON backups, installable PWA with offline reading.
 
 ## Security
 
@@ -99,7 +101,7 @@ Prefer email? The support address is below:
 
 ## Contributing
 
-Issues and PRs are welcome — especially additions to the device catalog (`public/models.js`) and real-world testing with keys I don't own. Run the test suite with `npm test`.
+Issues and PRs are welcome — especially additions to the device catalog (`public/js/data/models.js`) and real-world testing with keys I don't own. Run the test suite with `npm test`. [CONTRIBUTING.md](CONTRIBUTING.md) has the ground rules and [ARCHITECTURE.md](ARCHITECTURE.md) the map of the code.
 
 ## License
 

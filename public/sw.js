@@ -1,25 +1,59 @@
-'use strict';
-
-// Keeyo service worker: app shell is cached for instant loads and offline use;
-// the inventory (GET /api/data etc.) is network-first with a cached fallback so
-// the register stays readable offline. Nothing else is intercepted.
-
-const VERSION = 'keeyo-v1.7.0';
+const VERSION = 'keeyo-v2.0.0';
 
 const SHELL = [
   '/',
-  '/styles.css',
-  '/app.js',
-  '/models.js',
-  '/aaguids.js',
-  '/theme-init.js',
   '/favicon.svg',
   '/manifest.webmanifest',
-  '/vendor/qrcode.js',
-  '/fonts/space-grotesk-500.woff2',
-  '/fonts/space-grotesk-700.woff2',
   '/fonts/plex-mono-400.woff2',
   '/fonts/plex-mono-600.woff2',
+  '/css/fonts.css',
+  '/css/tokens.css',
+  '/css/layout.css',
+  '/css/components.css',
+  '/css/overlays.css',
+  '/css/keys.css',
+  '/css/services.css',
+  '/css/settings.css',
+  '/css/auth.css',
+  '/css/scan.css',
+  '/css/print.css',
+  '/css/motion.css',
+  '/js/theme-init.js',
+  '/js/vendor/qrcode.js',
+  '/js/catalog.js',
+  '/js/data/aaguids.js',
+  '/js/data/models.js',
+  '/js/forms/identify.js',
+  '/js/forms/key-form.js',
+  '/js/forms/registration-form.js',
+  '/js/forms/service-form.js',
+  '/js/icons.js',
+  '/js/lib/api.js',
+  '/js/lib/dom.js',
+  '/js/lib/secret-notes.js',
+  '/js/lib/webauthn.js',
+  '/js/main.js',
+  '/js/print-export.js',
+  '/js/router.js',
+  '/js/state.js',
+  '/js/theme.js',
+  '/js/ui/copy-field.js',
+  '/js/ui/forms.js',
+  '/js/ui/key-art.js',
+  '/js/ui/modal.js',
+  '/js/ui/rows.js',
+  '/js/ui/service-icon.js',
+  '/js/ui/shell.js',
+  '/js/ui/toast.js',
+  '/js/ui/undo.js',
+  '/js/views/auth.js',
+  '/js/views/key-detail.js',
+  '/js/views/keys.js',
+  '/js/views/services.js',
+  '/js/views/settings-catalog.js',
+  '/js/views/settings-security.js',
+  '/js/views/settings-tokens.js',
+  '/js/views/settings.js',
 ];
 
 const OFFLINE_API = ['/api/data', '/api/status', '/api/me'];
@@ -39,25 +73,17 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-
-  if (OFFLINE_API.includes(url.pathname)) {
-    e.respondWith(
-      fetch(e.request)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(VERSION).then((c) => c.put(e.request, copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
-    return;
-  }
-
-  if (url.pathname.startsWith('/api/')) return; // everything else API: network only
+  if (url.pathname.startsWith('/api/') && !OFFLINE_API.includes(url.pathname)) return;
 
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(VERSION).then((c) => c.put(e.request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

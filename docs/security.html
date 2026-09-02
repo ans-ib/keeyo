@@ -36,6 +36,8 @@
     <li>Optional <b>authenticator-app second factor</b> (RFC 6238 TOTP, ±1 step window, codes strictly single-use). Honesty note: unlike WebAuthn, this seed must live in the server's database — it's a convenience factor, one notch weaker than a hardware key.</li>
     <li><b>Recovery codes</b>: ten single-use fallback codes, generated server-side with ~49 bits of entropy each and stored only as SHA-256 hashes. They are a second factor only — useless without the scrypt-protected password — and are wiped automatically when the last real factor is removed.</li>
     <li>Optional <b>OIDC single sign-on</b> (authorization code flow with PKCE, state + nonce validated, single-use flows). SSO-created accounts get no usable password and are never auto-admins; the identity provider owns their authentication and MFA.</li>
+    <li><b>Password reset</b> (when SMTP is configured): single-use links, SHA-256-hashed at rest, 45-minute expiry, rate-limited, neutral responses that never reveal whether an account exists; using one revokes every session. SSO accounts are excluded.</li>
+    <li><b>Access tokens</b>: shown once, stored as SHA-256 hashes, scoped read-only or read &amp; write, with optional expiry. Sensitive routes — password/email changes, token and user management, admin panels — always refuse tokens and require a browser session.</li>
     <li>Login rate limiting that ignores spoofable <code>X-Forwarded-For</code> headers unless <code>TRUST_PROXY=1</code> is deliberately set.</li>
     <li>Changing your password signs out every other session.</li>
   </ul>

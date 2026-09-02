@@ -79,6 +79,12 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
       <tr><td><code>KEEYO_OIDC_LOGOUT_URL</code></td><td>unset</td><td>Where SSO users are sent after signing out of Keeyo.</td></tr>
       <tr><td><code>KEEYO_OIDC_REQUIRE_VERIFIED</code></td><td>unset</td><td>Set <code>1</code> to require <code>email_verified</code> before auto-creating an account.</td></tr>
       <tr><td><code>KEEYO_OIDC_DISABLE_PASSWORD</code></td><td>unset</td><td>Set <code>1</code> to turn off password sign-in for everyone except admins.</td></tr>
+      <tr><td><code>KEEYO_SMTP_HOST</code></td><td>unset</td><td>SMTP server — setting this (plus <code>FROM</code>) enables email and password-reset links.</td></tr>
+      <tr><td><code>KEEYO_SMTP_PORT</code></td><td><code>587</code>/<code>465</code></td><td>SMTP port (default depends on security mode).</td></tr>
+      <tr><td><code>KEEYO_SMTP_SECURITY</code></td><td><code>starttls</code></td><td><code>tls</code>, <code>starttls</code> or <code>none</code>.</td></tr>
+      <tr><td><code>KEEYO_SMTP_USER</code> / <code>KEEYO_SMTP_PASS</code></td><td>unset</td><td>SMTP credentials, if the server needs them.</td></tr>
+      <tr><td><code>KEEYO_SMTP_FROM</code></td><td>unset</td><td>Sender address for outgoing mail.</td></tr>
+      <tr><td><code>KEEYO_SMTP_FROM_NAME</code></td><td><code>Keeyo</code></td><td>Sender display name.</td></tr>
     </tbody>
   </table>
 
@@ -90,6 +96,9 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
     <li>Restart Keeyo — a <i>Continue with Authentik</i> button appears on the sign-in page.</li>
   </ol>
   <p>SSO users are matched by username (<code>preferred_username</code>, falling back to the email's local part) and created automatically on first sign-in as regular users — admins are only ever appointed locally. SSO accounts have no Keeyo password, and Keeyo's own second factor is skipped for them: your identity provider owns their authentication, including MFA. Password sign-in keeps working alongside SSO for local accounts.</p>
+
+  <h2>Email &amp; password reset</h2>
+  <p>Configure SMTP in <b>Settings → Security → Email (SMTP)</b> (or via the <code>KEEYO_SMTP_*</code> variables, which lock the panel) and a <i>Forgot password?</i> link appears on the sign-in page. Users set their address under Settings → Account; reset links are single-use, expire after 45 minutes, and revoke every session of the account when used. Accounts created by SSO have no password and are excluded. The SMTP client is built in — no relay container needed — and speaks TLS, STARTTLS or plain.</p>
 
   <h2>Reverse proxy &amp; HTTPS</h2>
   <p>Keeyo speaks plain HTTP; put your reverse proxy in front for TLS and set <code>TRUST_PROXY=1</code>. Caddy example:</p>
