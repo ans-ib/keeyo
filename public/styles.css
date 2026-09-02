@@ -306,6 +306,7 @@ code { font-family: var(--font-mono); }
 }
 
 .user-menu[hidden] { display: none; }
+.settings-card[hidden] { display: none; }
 .user-menu {
   position: absolute;
   top: calc(100% + 7px);
@@ -2177,6 +2178,23 @@ html.theme-anim body * {
   .sub-nav { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
   .sub-nav a { border-left: none !important; border-top: 1px solid var(--border-soft); text-align: center; }
 }
+
+/* ---------- single sign-on ---------- */
+
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 12px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+.sso-divider::before,
+.sso-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border-soft); }
+.sso-btn { display: flex; justify-content: center; width: 100%; }
 
 /* ---------- sign-in second factor (TOTP + recovery codes) ---------- */
 

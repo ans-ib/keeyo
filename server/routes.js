@@ -6,6 +6,7 @@ const { db, tx } = require('./db');
 const auth = require('./auth');
 const mds = require('./mds');
 const totp = require('./totp');
+const oidc = require('./oidc');
 
 const router = express.Router();
 
@@ -21,7 +22,6 @@ class ApiError extends Error {
   }
 }
 
-// ---------- sanitizers ----------
 
 function str(value, { max = 200, required = false, label = 'field' } = {}) {
   if (value === undefined || value === null) value = '';
@@ -56,8 +56,6 @@ function sanitizeKey(body) {
   };
 }
 
-// A WebAuthn credential captured during "Scan key" — used later to prove
-// physical possession before revealing the key's secret note.
 function sanitizeCredential(body) {
   const c = body.credential;
   if (!c || typeof c !== 'object') return null;
@@ -71,14 +69,12 @@ function sanitizeCredential(body) {
   return { id, publicKeyPem: spkiToPem(publicKey), alg, prfEnabled: c.prfEnabled ? 1 : 0 };
 }
 
-// Client-side-encrypted note envelope: enc:v1:<salt>:<iv>:<ciphertext> (base64url).
 const ENC_RE = /^enc:v1:[A-Za-z0-9_-]{16,88}:[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{8,1400}$/;
 
 function spkiToPem(b64) {
   return `-----BEGIN PUBLIC KEY-----\n${b64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----\n`;
 }
 
-// ---------- WebAuthn verification (shared by secret reveal and MFA login) ----------
 
 function verifyClientData(raw, { type, challenge, hostname }) {
   let cd;
@@ -97,8 +93,6 @@ function verifyClientData(raw, { type, challenge, hostname }) {
   return cd;
 }
 
-// Full assertion check: client data (type/challenge/origin), rpIdHash,
-// user-presence flag, and the signature against the stored public key.
 function verifyAssertion(req, cred, challenge, body) {
   const clientDataRaw = Buffer.from(String(body.clientDataJSON || ''), 'base64url');
   verifyClientData(clientDataRaw, { type: 'webauthn.get', challenge, hostname: req.hostname });
@@ -118,8 +112,9 @@ function verifyAssertion(req, cred, challenge, body) {
   if (!ok) throw new ApiError(403, 'Signature check failed — that is not the paired key');
 }
 
-// One-time challenge store shared by all WebAuthn ceremonies.
-const pendingChallenges = new Map(); // token -> { kind, userId, keyId?, challenge, expires }
+
+// Single-use challenge store shared by the WebAuthn reveal/verify and MFA flows.
+const pendingChallenges = new Map(); // token -> { kind, challenge, expires, ...fields }
 
 function issueChallenge(kind, fields = {}) {
   if (pendingChallenges.size > 1000) {
@@ -140,8 +135,6 @@ function consumeChallenge(token, kind) {
   return entry;
 }
 
-// Like consumeChallenge but leaves the token alive — used by the code-based
-// second factors, where a mistyped code should not force a fresh sign-in.
 function peekChallenge(token, kind) {
   const entry = pendingChallenges.get(String(token || ''));
   if (!entry || entry.kind !== kind || entry.expires < Date.now()) {
@@ -150,9 +143,6 @@ function peekChallenge(token, kind) {
   return entry;
 }
 
-// Returns the new secret value, or undefined for "leave unchanged".
-// Accepts either a plaintext note (legacy / non-PRF pairings) or an
-// end-to-end-encrypted envelope produced in the browser.
 function secretUpdate(body) {
   if (body.clearSecret === true) return '';
   if (typeof body.secret === 'string' && body.secret.trim() !== '') {
@@ -222,7 +212,6 @@ const KEY_COLS = `id, name, vendor, model, serial, color,
   CASE WHEN secret LIKE 'enc:v1:%' THEN 1 ELSE 0 END AS secretEncrypted,
   created_at AS createdAt`;
 
-// Append-only per-key logbook (capped at 200 entries per key).
 function logEvent(userId, keyId, kind, detail = '') {
   db.prepare('INSERT INTO events (user_id, key_id, kind, detail) VALUES (?, ?, ?, ?)')
     .run(userId, keyId, kind, String(detail).slice(0, 300));
@@ -257,9 +246,11 @@ function getService(userId, id) {
 router.get('/health', (req, res) => res.json({ ok: true }));
 
 router.get('/status', (req, res) => {
+  const sso = oidc.config();
   res.json({
     needsSetup: auth.userCount() === 0,
     authenticated: !!auth.sessionUser(req),
+    sso: sso ? { enabled: true, name: sso.name, passwordDisabled: !!sso.disablePassword } : { enabled: false },
   });
 });
 
@@ -295,9 +286,6 @@ function loginKeyCount(userId) {
   return db.prepare('SELECT COUNT(*) AS n FROM login_credentials WHERE user_id = ?').get(userId).n;
 }
 
-// Recovery codes are high-entropy random secrets (never user-chosen), so a
-// plain SHA-256 at rest is enough — and they are only ever a second factor,
-// useless without the scrypt-protected password.
 function hashRecoveryCode(code) {
   return crypto.createHash('sha256')
     .update(String(code).toUpperCase().replace(/[^A-Z0-9]/g, ''))
@@ -317,13 +305,22 @@ router.post('/login', (req, res) => {
   const body = req.body || {};
   const username = str(body.username, { label: 'Username', max: 40 }).toLowerCase();
   const password = typeof body.password === 'string' ? body.password : '';
-  const user = db.prepare('SELECT id, password_hash FROM users WHERE username = ?').get(username);
-  if (!user || !auth.verifyPassword(password, user.password_hash)) {
+  const user = db.prepare('SELECT id, password_hash, is_admin AS isAdmin FROM users WHERE username = ?').get(username);
+
+  // When SSO owns sign-in, passwords only work for admins (the lockout hatch).
+  // Every failure gets the same message so responses don't reveal which
+  // accounts are admins.
+  const ssoCfg = oidc.config();
+  const passwordOk = user && auth.verifyPassword(password, user.password_hash);
+  if (ssoCfg && ssoCfg.disablePassword && !(passwordOk && user.isAdmin)) {
+    auth.recordLoginFailure(ip);
+    throw new ApiError(403, `Password sign-in is disabled — use "${ssoCfg.name}" instead`);
+  }
+  if (!passwordOk) {
     auth.recordLoginFailure(ip);
     throw new ApiError(401, 'Wrong username or password');
   }
 
-  // Second factor: security key, authenticator app, or a recovery code.
   const loginKeys = MFA_DISABLED
     ? []
     : db.prepare('SELECT credential_id AS credentialId FROM login_credentials WHERE user_id = ?').all(user.id);
@@ -354,8 +351,6 @@ router.post('/login/mfa', (req, res) => {
   if (!auth.loginAllowed(ip)) throw new ApiError(429, 'Too many failed attempts. Try again in a few minutes.');
   const body = req.body || {};
 
-  // Authenticator-app code. A wrong code counts toward the IP rate limit but
-  // keeps the token alive; the token dies only on success.
   if (body.code !== undefined) {
     const entry = peekChallenge(body.mfaToken, 'mfa');
     const t = totpSecretFor(entry.userId);
@@ -372,7 +367,6 @@ router.post('/login/mfa', (req, res) => {
     return;
   }
 
-  // Single-use recovery code.
   if (body.recoveryCode !== undefined) {
     const entry = peekChallenge(body.mfaToken, 'mfa');
     const row = db.prepare("SELECT id FROM recovery_codes WHERE user_id = ? AND code_hash = ? AND used_at = ''")
@@ -408,11 +402,76 @@ router.post('/login/mfa', (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
+  const row = db.prepare('SELECT via FROM sessions WHERE token = ?').get(auth.currentToken(req));
   auth.destroySession(req, res);
-  res.json({ ok: true });
+  // SSO sessions can chain into the identity provider's logout page.
+  const cfg = oidc.config();
+  const redirect = row && row.via === 'sso' && cfg && cfg.logoutUrl ? cfg.logoutUrl : undefined;
+  res.json({ ok: true, redirect });
 });
 
-// Everything below requires a signed-in user.
+// ---------- single sign-on (OIDC — Authentik, Authelia, Keycloak, …) ----------
+
+const pendingSso = new Map(); // state -> flow
+
+router.get('/oidc/login', (req, res, next) => {
+  (async () => {
+    const cfg = oidc.config();
+    if (!cfg) throw new ApiError(404, 'SSO is not configured');
+    if (auth.userCount() === 0) {
+      res.redirect('/?ssoError=' + encodeURIComponent('Complete the first-run setup before signing in with SSO'));
+      return;
+    }
+    const disco = await oidc.discover();
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/oidc/callback`;
+    const flow = oidc.newFlow(redirectUri);
+    if (pendingSso.size > 500) {
+      for (const [k, v] of pendingSso) if (v.expires < Date.now()) pendingSso.delete(k);
+    }
+    pendingSso.set(flow.state, flow);
+    res.redirect(oidc.authUrl(disco, cfg, flow));
+  })().catch(next);
+});
+
+router.get('/oidc/callback', (req, res) => {
+  (async () => {
+    const cfg = oidc.config();
+    if (!cfg) {
+      res.redirect('/');
+      return;
+    }
+    const stateKey = String(req.query.state || '');
+    const flow = pendingSso.get(stateKey);
+    pendingSso.delete(stateKey);
+    if (!flow || flow.expires < Date.now()) throw new Error('Sign-in attempt expired — try again');
+    if (req.query.error) throw new Error(String(req.query.error_description || req.query.error));
+    const code = String(req.query.code || '');
+    if (!code) throw new Error('The identity provider returned no authorization code');
+
+    const disco = await oidc.discover();
+    const idToken = await oidc.exchangeCode(disco, cfg, flow, code);
+    const claims = oidc.validateIdToken(idToken, disco, cfg, flow.nonce);
+    const username = oidc.usernameFrom(claims, cfg);
+
+    let user = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (!user) {
+      if (!cfg.autoCreate) throw new Error(`No Keeyo account named "${username}" — ask your admin to create it`);
+      if (cfg.requireVerified && claims.email_verified !== true) {
+        throw new Error('Your email address is not verified at the identity provider');
+      }
+      // 'sso' is deliberately not a valid scrypt hash: these accounts can only
+      // ever sign in through the identity provider, never with a password.
+      const info = db.prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 0)')
+        .run(username, 'sso');
+      user = { id: Number(info.lastInsertRowid) };
+    }
+    auth.createSession(req, res, user.id, 'sso');
+    res.redirect('/');
+  })().catch((err) => {
+    res.redirect('/?ssoError=' + encodeURIComponent(String(err.message || 'SSO sign-in failed').slice(0, 200)));
+  });
+});
+
 router.use(auth.requireAuth);
 
 router.get('/me', (req, res) => res.json(req.user));
@@ -430,7 +489,6 @@ router.put('/me/password', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- sign-in security keys (MFA enrollment) ----------
 
 router.get('/login-keys', (req, res) => {
   res.json(db.prepare(`SELECT ${LOGIN_KEY_COLS} FROM login_credentials WHERE user_id = ? ORDER BY id`).all(req.user.id));
@@ -472,10 +530,6 @@ router.delete('/login-keys/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- authenticator app (TOTP second factor) & recovery codes ----------
-
-// Recovery codes exist only as a fallback for a second factor; once the last
-// factor is gone they are dead weight (and a lingering bypass), so wipe them.
 function dropOrphanedRecoveryCodes(userId) {
   if (loginKeyCount(userId) === 0 && !totpSecretFor(userId)) {
     db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(userId);
@@ -490,7 +544,7 @@ router.get('/account/mfa', (req, res) => {
   });
 });
 
-const pendingTotp = new Map(); // userId -> { secret, expires }
+const pendingTotp = new Map(); 
 
 router.post('/account/totp/setup', (req, res) => {
   if (pendingTotp.size > 1000) {
@@ -521,7 +575,7 @@ router.post('/account/recovery-codes', (req, res) => {
   if (loginKeyCount(req.user.id) === 0 && !totpSecretFor(req.user.id)) {
     throw new ApiError(400, 'Enroll a sign-in key or authenticator app first — recovery codes are a fallback for a second factor');
   }
-  const alphabet = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'; // no 0/O, 1/I/L, U/V lookalikes
+  const alphabet = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'; 
   const codes = [];
   tx(() => {
     db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(req.user.id);
@@ -537,7 +591,87 @@ router.post('/account/recovery-codes', (req, res) => {
   res.json({ codes });
 });
 
-// ---------- user management (admin) ----------
+
+router.get('/admin/sso', auth.requireAdmin, (req, res) => {
+  const cfg = oidc.config();
+  res.json({
+    envLocked: oidc.envLocked(),
+    configured: !!cfg,
+    enabled: oidc.setting('oidc_enabled') === '1',
+    issuer: oidc.setting('oidc_issuer'),
+    clientId: oidc.setting('oidc_client_id'),
+    hasSecret: !!oidc.setting('oidc_client_secret'),
+    name: oidc.setting('oidc_name') || 'SSO',
+    autoCreate: oidc.setting('oidc_auto_create') !== '0',
+    scopes: oidc.setting('oidc_scopes') || 'openid profile email',
+    usernameClaim: oidc.setting('oidc_username_claim') || 'preferred_username',
+    authUrl: oidc.setting('oidc_auth_url'),
+    tokenUrl: oidc.setting('oidc_token_url'),
+    logoutUrl: oidc.setting('oidc_logout_url'),
+    requireVerified: oidc.setting('oidc_require_verified') === '1',
+    disablePassword: oidc.setting('oidc_disable_password') === '1',
+  });
+});
+
+const SSO_KEYS = ['oidc_enabled', 'oidc_issuer', 'oidc_client_id', 'oidc_client_secret', 'oidc_name',
+  'oidc_auto_create', 'oidc_scopes', 'oidc_username_claim', 'oidc_auth_url', 'oidc_token_url',
+  'oidc_logout_url', 'oidc_require_verified', 'oidc_disable_password'];
+
+function optionalUrl(value, label) {
+  const v = str(value, { label, max: 500 });
+  if (v && !/^https?:\/\/\S+$/.test(v)) throw new ApiError(400, `${label} must be a full http(s) URL`);
+  return v;
+}
+
+router.put('/admin/sso', auth.requireAdmin, (req, res) => {
+  if (oidc.envLocked()) throw new ApiError(400, 'SSO is configured through environment variables — change it there');
+  const body = req.body || {};
+  const enabled = body.enabled === true;
+  const issuer = optionalUrl(body.issuer, 'Issuer URL').replace(/\/+$/, '');
+  const clientId = str(body.clientId, { label: 'Client ID', max: 200 });
+  const clientSecret = str(body.clientSecret, { label: 'Client secret', max: 500 });
+  const name = str(body.name, { label: 'Provider name', max: 40 }) || 'SSO';
+  const scopes = str(body.scopes, { label: 'Scopes', max: 200 }) || 'openid profile email';
+  const usernameClaim = str(body.usernameClaim, { label: 'User identifier field', max: 60 }) || 'preferred_username';
+  const authUrl = optionalUrl(body.authUrl, 'Auth URL');
+  const tokenUrl = optionalUrl(body.tokenUrl, 'Token URL');
+  const logoutUrl = optionalUrl(body.logoutUrl, 'Logout URL');
+
+  const put = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+  if (body.clear === true) {
+    // Forget the whole configuration, credentials included.
+    tx(() => {
+      for (const k of SSO_KEYS) db.prepare('DELETE FROM settings WHERE key = ?').run(k);
+    });
+    res.json({ ok: true, configured: false });
+    return;
+  }
+  if (enabled) {
+    if (!issuer) throw new ApiError(400, 'Issuer URL is required');
+    if (!clientId) throw new ApiError(400, 'Client ID is required');
+    if (!clientSecret && !oidc.setting('oidc_client_secret')) throw new ApiError(400, 'Client secret is required');
+    if ((authUrl && !tokenUrl) || (!authUrl && tokenUrl)) {
+      throw new ApiError(400, 'Set both Auth URL and Token URL to bypass discovery, or neither');
+    }
+    if (!scopes.split(/\s+/).includes('openid')) throw new ApiError(400, 'Scopes must include "openid"');
+  }
+  tx(() => {
+    put.run('oidc_enabled', enabled ? '1' : '0');
+    put.run('oidc_issuer', issuer);
+    put.run('oidc_client_id', clientId);
+    if (clientSecret) put.run('oidc_client_secret', clientSecret); // empty = keep the stored one
+    put.run('oidc_name', name);
+    put.run('oidc_auto_create', body.autoCreate === false ? '0' : '1');
+    put.run('oidc_scopes', scopes);
+    put.run('oidc_username_claim', usernameClaim);
+    put.run('oidc_auth_url', authUrl);
+    put.run('oidc_token_url', tokenUrl);
+    put.run('oidc_logout_url', logoutUrl);
+    put.run('oidc_require_verified', body.requireVerified === true ? '1' : '0');
+    put.run('oidc_disable_password', body.disablePassword === true ? '1' : '0');
+  });
+  res.json({ ok: true, configured: !!oidc.config() });
+});
 
 router.get('/users', auth.requireAdmin, (req, res) => {
   const rows = db.prepare('SELECT id, username, is_admin AS isAdmin, created_at AS createdAt FROM users ORDER BY id').all();
@@ -563,7 +697,6 @@ router.delete('/users/:id', auth.requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- data ----------
 
 router.get('/data', (req, res) => {
   const uid = req.user.id;
@@ -576,7 +709,6 @@ router.get('/data', (req, res) => {
   });
 });
 
-// ---------- personal catalog (custom vendors, models, form factors, colors) ----------
 
 router.post('/catalog', (req, res) => {
   const item = sanitizeCatalogItem(req.body || {});
@@ -608,7 +740,6 @@ router.delete('/catalog/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- device registry (live AAGUID lookups) ----------
 
 router.get('/registry', (req, res) => res.json(mds.status()));
 
@@ -627,7 +758,6 @@ router.get('/aaguid/:aaguid', (req, res) => {
   res.json({ aaguid: id, found: !!hit, name: hit ? hit.name : '', icon: hit ? hit.icon : '' });
 });
 
-// ---------- keys ----------
 
 router.post('/keys', (req, res) => {
   const body = req.body || {};
@@ -659,9 +789,6 @@ router.put('/keys/:id', (req, res) => {
   const cred = sanitizeCredential(body);
   const secret = secretUpdate(body);
   if (cred) {
-    // Re-pairing guard: swapping the credential while a secret note exists would
-    // let a session holder "reveal" the note with their own key. The old secret
-    // must be cleared or replaced in the same request (destroyed, never exposed).
     const row = db.prepare('SELECT credential_id, secret FROM keys WHERE user_id = ? AND id = ?').get(req.user.id, id);
     if (row.secret && row.credential_id && row.credential_id !== cred.id && secret === undefined) {
       throw new ApiError(403, 'This key holds a secret note bound to its current pairing — clear or replace the note to re-pair');
@@ -695,7 +822,6 @@ router.get('/keys/:id/events', (req, res) => {
   res.json(db.prepare('SELECT id, kind, detail, created_at AS createdAt FROM events WHERE key_id = ? ORDER BY id DESC LIMIT 200').all(id));
 });
 
-// ---------- secret reveal (requires tapping the physical key) ----------
 
 router.post('/keys/:id/reveal-challenge', (req, res) => {
   const id = intId(req.params.id);
@@ -703,8 +829,6 @@ router.post('/keys/:id/reveal-challenge', (req, res) => {
   if (!key) throw new ApiError(404, 'Key not found');
   if (!key.credential_id) throw new ApiError(400, 'This key was not paired by scanning — no possession proof is available');
   if (!key.secret) throw new ApiError(400, 'No secret note is stored on this key');
-  // Encrypted notes need the PRF salt during the assertion, so hand it out
-  // with the challenge (the salt is not secret).
   let prfSalt = null;
   if (key.secret.startsWith('enc:v1:')) {
     const parts = key.secret.split(':');
@@ -726,7 +850,6 @@ router.post('/keys/:id/reveal', (req, res) => {
   res.json({ secret: key.secret });
 });
 
-// ---------- attachments ----------
 
 const ATTACH_COLS = 'id, key_id AS keyId, name, mime, size, created_at AS createdAt';
 
@@ -776,7 +899,6 @@ router.delete('/keys/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- services ----------
 
 router.post('/services', (req, res) => {
   const s = sanitizeService(req.body || {});
@@ -803,7 +925,6 @@ router.delete('/services/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- registrations ----------
 
 router.post('/registrations', (req, res) => {
   const body = req.body || {};
@@ -818,8 +939,6 @@ router.post('/registrations', (req, res) => {
       getService(req.user.id, serviceId);
     } else if (body.service && typeof body.service === 'object') {
       const s = sanitizeService(body.service);
-      // Inline creation reuses an existing service with the same name instead
-      // of silently minting duplicates.
       const existing = db.prepare('SELECT id FROM services WHERE user_id = ? AND name = ? COLLATE NOCASE').get(req.user.id, s.name);
       if (existing) {
         serviceId = existing.id;
@@ -880,7 +999,6 @@ router.delete('/registrations/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- export / import ----------
 
 router.get('/export', (req, res) => {
   const uid = req.user.id;

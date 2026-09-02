@@ -86,6 +86,11 @@ CREATE TABLE IF NOT EXISTS login_credentials (
 
 CREATE INDEX IF NOT EXISTS idx_logincreds_user ON login_credentials(user_id);
 
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS recovery_codes (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -144,6 +149,7 @@ ensureColumn('keys', 'verified_at', "verified_at TEXT NOT NULL DEFAULT ''");
 ensureColumn('keys', 'prf_enabled', 'prf_enabled INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users', 'totp_secret', "totp_secret TEXT NOT NULL DEFAULT ''");
 ensureColumn('users', 'totp_counter', 'totp_counter INTEGER NOT NULL DEFAULT 0');
+ensureColumn('sessions', 'via', "via TEXT NOT NULL DEFAULT 'password'");
 
 /** Run fn inside a transaction; rolls back on throw. */
 function tx(fn) {

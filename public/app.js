@@ -898,6 +898,7 @@ const app = $('#app');
 async function boot() {
   try {
     const status = await api('/status');
+    state.sso = status.sso || { enabled: false };
     if (status.needsSetup) return renderSetup();
     if (!status.authenticated) return renderLogin();
     await loadData();
@@ -984,7 +985,11 @@ function shell(content, active, anim = false) {
   // Clicking Settings while already on a settings page won't re-render — close by hand.
   $('a', um).addEventListener('click', () => { um.hidden = true; });
   $('#logout-btn').addEventListener('click', async () => {
-    await api('/logout', { method: 'POST', body: {} });
+    const r = await api('/logout', { method: 'POST', body: {} });
+    if (r.redirect) {
+      location.href = r.redirect;
+      return;
+    }
     state.me = null;
     boot();
   });
@@ -1056,14 +1061,38 @@ function renderSetup() {
 }
 
 function renderLogin() {
+  const sso = state.sso && state.sso.enabled;
+  const pwHidden = sso && state.sso.passwordDisabled;
   authShell(`
     <p class="auth-sub">Equipment register · authorized access</p>
-    <form id="login-form">
+    ${pwHidden ? `
+    <a class="btn btn-primary sso-btn" href="/api/oidc/login">Continue with ${esc(state.sso.name)}</a>
+    <div class="form-error" id="sso-only-error"></div>
+    <p class="small" style="text-align:center;margin-top:14px"><button type="button" class="link-btn" id="show-pw-login">admin sign-in</button></p>` : ''}
+    <form id="login-form" ${pwHidden ? 'hidden' : ''}>
       <div class="form-error"></div>
       <div class="field"><label>Username</label><input type="text" name="username" autocomplete="username" required></div>
       <div class="field"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
       <button class="btn btn-primary" type="submit">Sign in</button>
+      ${sso && !pwHidden ? `
+      <div class="sso-divider"><span>or</span></div>
+      <a class="btn sso-btn" href="/api/oidc/login">Continue with ${esc(state.sso.name)}</a>` : ''}
     </form>`);
+
+  const showPw = $('#show-pw-login');
+  if (showPw) showPw.addEventListener('click', () => {
+    $('#login-form').hidden = false;
+    showPw.parentElement.remove();
+  });
+
+  // The OIDC callback reports failures via a query parameter.
+  const ssoError = new URLSearchParams(location.search).get('ssoError');
+  if (ssoError) {
+    const box = $('#sso-only-error') || $('#login-form .form-error');
+    box.textContent = ssoError;
+    box.classList.add('visible');
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
 
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1130,8 +1159,7 @@ function renderMfaMethod(mfa, method) {
         <div class="field"><label>${isTotp ? '6-digit code from your authenticator app' : 'Recovery code'}</label>
           <input type="text" name="code" inputmode="${isTotp ? 'numeric' : 'text'}" autocomplete="one-time-code"
             maxlength="${isTotp ? 6 : 12}" placeholder="${isTotp ? '000000' : 'XXXXX-XXXXX'}" required autofocus
-            spellcheck="false" autocapitalize="characters">
-          ${isTotp ? '' : '<div class="hint">Each recovery code signs you in exactly once.</div>'}</div>
+            spellcheck="false" autocapitalize="characters"></div>
         <button class="btn btn-primary" type="submit" style="width:100%">Verify</button>
         <div class="mfa-alts">${altHTML}</div>
         <div style="text-align:center;margin-top:8px"><button type="button" class="link-btn" id="mfa-back">back to sign in</button></div>
@@ -1236,7 +1264,6 @@ function viewKeys() {
       <div class="empty-state">
         <div class="art">${keyArt({ color: 'var(--accent)', formFactor: 'usb-a' }, 120)}</div>
         <h2>No keys on file</h2>
-        <p>Register your first hardware security key and start tracking which passkeys, 2FA registrations and TOTP codes live on it.</p>
         <button class="btn btn-primary" data-add-key>${I.plus} Register first key</button>
       </div>`;
   } else {
@@ -1297,10 +1324,7 @@ function viewKeys() {
       <a href="#/keys/${stale[0].id}">Open key</a></div>`;
   }
 
-  // First-run coach: keys exist but nothing is logged on them yet.
-  const coach = state.keys.length && state.registrations.length === 0
-    ? `<div class="notice-strip info-strip">${I.keyIcon}<span>Now open a tag and log what lives on it — every passkey, 2FA registration and TOTP.</span></div>`
-    : '';
+  const coach = '';
 
   const toolbar = state.keys.length ? `
     <div class="grid-toolbar">
@@ -1324,7 +1348,6 @@ function viewKeys() {
       ${state.keys.length ? `<button class="btn" id="identify-key-btn" title="Plug a key in, tap it, and Keeyo names it">${I.scan} Identify key</button>` : ''}
       <button class="btn btn-primary" data-add-key>${I.plus} Register key</button>
     </div>
-    ${state.keys.length ? '<p class="page-sub">Every physical key on file, and what lives on it. Open a tag for its full record. <span class="kbd-hint">( / to search · N for new key )</span></p>' : ''}
     ${toolbar}
     ${coach}
     ${banner}
@@ -1480,20 +1503,20 @@ function viewKeyDetail(key) {
 
     <div class="section">
       <div class="section-head">
-        <h2>Sign-ins on this key</h2><span class="count">${signIns.length || ''}</span>
+        <h2>Sign-ins</h2><span class="count">${signIns.length || ''}</span>
         <div class="grow"></div>
         <button class="btn btn-sm" data-add-reg="passkey">${I.plus} Add sign-in</button>
       </div>
       <div class="row-list">
         ${signIns.length
           ? signIns.map((r) => regRow(r)).join('')
-          : '<div class="section-empty">No passkeys or 2FA registrations tracked on this key yet.</div>'}
+          : '<div class="section-empty">None yet.</div>'}
       </div>
     </div>
 
     <div class="section">
       <div class="section-head">
-        <h2>TOTP codes on this key</h2><span class="count">${totps.length || ''}</span>
+        <h2>TOTP codes</h2><span class="count">${totps.length || ''}</span>
         <div class="grow"></div>
         <button class="btn btn-sm" data-add-reg="totp">${I.plus} Add TOTP</button>
       </div>
@@ -1502,7 +1525,7 @@ function viewKeyDetail(key) {
           ? totps.map((r) => regRow(r)).join('')
           : `<div class="section-empty">${model && model.totpSlots === 0
               ? 'This model cannot store TOTP secrets.'
-              : 'No TOTP codes tracked on this key yet.'}</div>`}
+              : 'None yet.'}</div>`}
       </div>
     </div>
 
@@ -1527,7 +1550,7 @@ function viewKeyDetail(key) {
                 <button class="btn-icon danger" data-del-att="${f.id}" data-att-name="${esc(f.name)}" title="Delete">${I.trash}</button>
               </div>
             </div>`).join('')
-          : '<div class="section-empty">Receipts, recovery sheets, manuals… up to 10 files, 5 MB each.</div>'}
+          : '<div class="section-empty">Up to 10 files, 5 MB each.</div>'}
       </div>
     </div>
 
@@ -1727,7 +1750,6 @@ function viewServicesHome() {
     list = `
       <div class="empty-state" style="padding:46px 20px">
         <h2>No services on file</h2>
-        <p>Services appear here automatically when you add sign-ins or TOTP codes to a key — or add one now.</p>
         <button class="btn btn-primary" data-add-svc>${I.plus} Add a service</button>
       </div>`;
   } else {
@@ -1776,7 +1798,6 @@ function viewServicesHome() {
       ${state.services.length ? `<div class="search-box">${I.search}<input id="svc-search" type="text" placeholder="SEARCH SERVICES…" value="${esc(state.svcSearch)}"></div>` : ''}
       <button class="btn btn-primary" data-add-svc>${I.plus} Add service</button>
     </div>
-    <p class="page-sub">Every service you've registered a key with — open one to see exactly which keys cover it.</p>
     ${list}
     ${state.services.length ? `<p class="list-total">${state.services.length} service${state.services.length === 1 ? '' : 's'} total</p>` : ''}`;
 }
@@ -1954,7 +1975,6 @@ function viewSettings(section) {
     content = `
       <div class="settings-grid"><div class="settings-card">
         <h2>Appearance</h2>
-        <p class="desc">Two design languages, five color schemes — mix them however you like. Your choice is saved on this device.</p>
         <p class="appearance-label">Style</p>
         <div class="skin-row">
           ${SKINS.map((s) => `
@@ -1982,12 +2002,9 @@ function viewSettings(section) {
           <div class="field"><label>New password</label><input type="password" name="next" autocomplete="new-password" required></div>
           <button class="btn" type="submit">Change password</button>
         </form>
-        <p class="hint small muted" style="margin-top:10px">Changing your password signs out every other session.
-          Looking for two-factor sign-in? That moved to the <a href="#/settings/security">Security</a> tab.</p>
       </div>
       <div class="settings-card">
         <h2>Backup</h2>
-        <p class="desc">Export your keys, services and registrations as a JSON file, or restore from a previous export.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <a class="btn" href="/api/export">Export data</a>
           <button class="btn" id="csv-btn">${I.download} Export CSV</button>
@@ -1995,37 +2012,33 @@ function viewSettings(section) {
           <button class="btn" id="import-btn">Import backup…</button>
           <input type="file" id="import-file" accept="application/json,.json" style="display:none">
         </div>
-        <p class="hint small muted" style="margin-top:10px">Importing replaces all of your current data.
-          Exports contain your secret notes in plain text — store the file safely.
-          File attachments live only in the database: back up the <code>/data</code> volume to keep them.</p>
       </div></div>`;
   } else if (section === 'security') {
     content = `
-      <p class="page-sub" style="margin-top:0">Second factors for signing in to Keeyo itself — on top of your password.</p>
       <div class="settings-grid">
       <div class="settings-card">
         <h2>Security keys</h2>
-        <p class="desc">Enroll a hardware key and signing in asks for a tap. Enroll at least two so losing one never locks you out.</p>
         <div id="login-key-list"><p class="muted small">Loading…</p></div>
         <div style="margin-top:12px"><button class="btn btn-sm" id="add-login-key">${I.plus} Enroll a key</button></div>
       </div>
       <div class="settings-card">
         <h2>Authenticator app</h2>
-        <p class="desc">Six-digit codes as a second factor — works alongside or instead of a key, even where security keys can't (plain-HTTP setups).</p>
         <div id="totp-status"><p class="muted small">Loading…</p></div>
       </div>
-      <div class="settings-card">
+      <div class="settings-card" id="recovery-card" hidden>
         <h2>Recovery codes</h2>
-        <p class="desc">Single-use fallback codes for the day your second factor isn't at hand. Store them somewhere safe.</p>
         <div id="recovery-status"><p class="muted small">Loading…</p></div>
-        <p class="hint small muted" style="margin-top:14px">Locked out completely? The server owner can start Keeyo with <code>KEEYO_DISABLE_MFA=1</code> or run <code>scripts/reset-password.js</code>.</p>
       </div>
+      ${state.me.isAdmin ? `
+      <div class="settings-card">
+        <h2>Single sign-on</h2>
+        <div id="sso-config"><p class="muted small">Loading…</p></div>
+      </div>` : ''}
       </div>`;
   } else if (section === 'users') {
     content = `
       <div class="settings-grid"><div class="settings-card">
         <h2>Users</h2>
-        <p class="desc">Everyone gets their own private key inventory.</p>
         <div id="user-list"><p class="muted small">Loading…</p></div>
         <div style="margin-top:12px"><button class="btn" id="add-user-btn">${I.plus} Add user</button></div>
       </div></div>`;
@@ -2080,6 +2093,7 @@ function bindSettings(section) {
   if (section === 'security') {
     loadLoginKeys();
     loadMfaStatus();
+    loadSsoConfig();
     $('#add-login-key').addEventListener('click', () => loginKeyModal());
   }
 
@@ -2156,7 +2170,7 @@ async function loadLoginKeys() {
         <span class="muted small">${esc(formatDate(k.createdAt))}</span>
         <button class="btn-icon danger" data-del-lk="${k.id}" data-lk-name="${esc(k.name)}" title="Remove">${I.trash}</button>
       </div>`).join('')
-    : '<p class="muted small">No sign-in keys enrolled — Keeyo is protected by password only.</p>';
+    : '<p class="muted small">None enrolled.</p>';
   $$('[data-del-lk]').forEach((b) =>
     b.addEventListener('click', async () => {
       const ok = await confirmDialog({
@@ -2180,21 +2194,19 @@ async function loadMfaStatus() {
   if (!totpBox || !recBox) return;
 
   totpBox.innerHTML = s.totpEnabled
-    ? `<div class="user-row"><span class="chip accent">enabled</span>
-        <span class="name muted small">Codes from your authenticator app work as a second factor.</span>
-        <button class="btn btn-sm" id="totp-off">Turn off</button></div>`
-    : `<div class="user-row"><span class="name muted small">Not set up.</span>
-        <button class="btn btn-sm" id="totp-setup">Set up</button></div>`;
+    ? `<div class="user-row"><span class="chip accent">enabled</span><div class="grow"></div><button class="btn btn-sm" id="totp-off">Turn off</button></div>`
+    : `<div class="user-row"><button class="btn btn-sm" id="totp-setup">Set up</button></div>`;
 
+  // Recovery codes only make sense once a second factor exists.
   const hasFactor = s.totpEnabled || s.loginKeys > 0;
-  if (!hasFactor) {
-    recBox.innerHTML = '<p class="muted small">Enroll a security key or authenticator app first — recovery codes are the fallback when your second factor is unavailable.</p>';
-  } else {
+  const recCard = $('#recovery-card');
+  if (recCard) recCard.hidden = !hasFactor;
+  if (hasFactor) {
     const st = s.recovery;
     recBox.innerHTML = `<div class="user-row">
         <span class="name ${st.total ? '' : 'muted'} small">${st.total
           ? `<b>${st.remaining}</b> of ${st.total} codes unused${st.remaining <= 2 ? ' — running low!' : ''}`
-          : 'None generated — without them, losing your second factor locks you out.'}</span>
+          : 'None generated.'}</span>
         <button class="btn btn-sm" id="gen-recovery">${st.total ? 'Regenerate' : 'Generate codes'}</button>
       </div>`;
   }
@@ -2229,6 +2241,100 @@ async function loadMfaStatus() {
   });
 }
 
+async function loadSsoConfig() {
+  const box = $('#sso-config');
+  if (!box) return;
+  const s = await api('/admin/sso');
+  if (!$('#sso-config')) return;
+
+  if (s.envLocked) {
+    box.innerHTML = `<p class="muted small">SSO is configured through environment variables
+      (<code>KEEYO_OIDC_*</code>) and can only be changed there. <span class="chip accent">enabled</span></p>`;
+    return;
+  }
+
+  const check = (name, label, on) => `
+    <div class="field"><label><input type="checkbox" name="${name}" style="width:auto;margin-right:7px" ${on ? 'checked' : ''}>${label}</label></div>`;
+
+  box.innerHTML = `
+    <form id="sso-form">
+      <div class="form-error"></div>
+      ${check('enabled', '<b>Enable OIDC / OAuth sign-in</b>', s.enabled)}
+      <div class="field"><label>Provider name</label>
+        <input type="text" name="name" maxlength="40" value="${esc(s.name)}" placeholder="SSO"></div>
+      <div class="field"><label>Client ID</label>
+        <input type="text" name="clientId" value="${esc(s.clientId)}" autocomplete="off"></div>
+      <div class="field"><label>Client secret</label>
+        <input type="password" name="clientSecret" autocomplete="new-password" placeholder="${s.hasSecret ? '(unchanged)' : ''}"></div>
+      <div class="field"><label>Issuer URL</label>
+        <input type="url" name="issuer" placeholder="https://auth.example.com/application/o/keeyo/" value="${esc(s.issuer)}"></div>
+      <div class="field"><label>Scopes</label>
+        <input type="text" name="scopes" value="${esc(s.scopes)}" placeholder="openid profile email"></div>
+      <div class="field"><label>User identifier field</label>
+        <input type="text" name="usernameClaim" value="${esc(s.usernameClaim)}" placeholder="preferred_username"></div>
+      <div class="field"><label>Auth URL</label>
+        <input type="url" name="authUrl" value="${esc(s.authUrl)}" placeholder="auto-discovered from the issuer"></div>
+      <div class="field"><label>Token URL</label>
+        <input type="url" name="tokenUrl" value="${esc(s.tokenUrl)}" placeholder="auto-discovered from the issuer"></div>
+      <div class="field"><label>Logout URL</label>
+        <input type="url" name="logoutUrl" value="${esc(s.logoutUrl)}"></div>
+      <div class="field"><label>Redirect URL</label>
+        <input type="text" value="${esc(location.origin)}/api/oidc/callback" readonly></div>
+      ${check('autoCreate', 'Create users automatically on first sign-in', s.autoCreate)}
+      ${check('disablePassword', 'Disable password login', s.disablePassword)}
+      ${check('requireVerified', 'Require a verified email for new accounts', s.requireVerified)}
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+        <button class="btn" type="submit">Save</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="sso-clear">Clear configuration</button>
+        <div class="grow"></div>
+        ${s.configured ? '<span class="chip accent">enabled</span>' : '<span class="chip">off</span>'}
+      </div>
+    </form>`;
+
+  $('#sso-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const errBox = $('.form-error', f);
+    errBox.classList.remove('visible');
+    try {
+      const r = await api('/admin/sso', {
+        method: 'PUT',
+        body: {
+          enabled: f.enabled.checked,
+          name: f.name.value.trim(),
+          clientId: f.clientId.value.trim(),
+          clientSecret: f.clientSecret.value,
+          issuer: f.issuer.value.trim(),
+          scopes: f.scopes.value.trim(),
+          usernameClaim: f.usernameClaim.value.trim(),
+          authUrl: f.authUrl.value.trim(),
+          tokenUrl: f.tokenUrl.value.trim(),
+          logoutUrl: f.logoutUrl.value.trim(),
+          autoCreate: f.autoCreate.checked,
+          disablePassword: f.disablePassword.checked,
+          requireVerified: f.requireVerified.checked,
+        },
+      });
+      toast(r.configured ? 'SSO enabled — the sign-in page now shows the button' : 'Saved (SSO is off)');
+      loadSsoConfig();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.add('visible');
+    }
+  });
+  $('#sso-clear').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Clear the SSO configuration?',
+      message: 'Turns SSO off and forgets the client secret and every field.',
+      confirmLabel: 'Clear',
+    });
+    if (!ok) return;
+    await api('/admin/sso', { method: 'PUT', body: { clear: true } });
+    toast('SSO configuration cleared');
+    loadSsoConfig();
+  });
+}
+
 async function totpSetupModal() {
   let setup;
   try {
@@ -2242,7 +2348,6 @@ async function totpSetupModal() {
     code: 'Form U-03 · authenticator',
     submitLabel: 'Verify & enable',
     bodyHTML: `
-      <p class="small" style="margin-top:0">Scan the code with your authenticator app, or enter the secret by hand. Then type the current 6-digit code to prove it took.</p>
       <div class="totp-setup-row">
         <div class="totp-qr">${qrSVG(setup.otpauth)}</div>
         <div class="totp-secret"><span class="muted small">Manual entry secret</span><code>${esc(setup.secret)}</code></div>
@@ -2288,8 +2393,7 @@ function loginKeyModal() {
     submitLabel: 'Enroll — touch key',
     bodyHTML: `
       <div class="field"><label>Name</label>
-        <input type="text" name="lkName" required maxlength="80" placeholder="e.g. Daily driver, Desk backup">
-        <div class="hint">Enroll at least two keys so losing one never locks you out.</div></div>`,
+        <input type="text" name="lkName" required maxlength="80" placeholder="e.g. Daily driver, Desk backup"></div>`,
     onSubmit: async (form) => {
       const name = form.lkName.value.trim();
       if (!name) throw new Error('Give the key a name');
@@ -2385,7 +2489,6 @@ function viewCatalogSection() {
   const ffOpts = allFormFactors().map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('');
 
   return `
-    <p class="page-sub" style="margin-top:0">Everything the key form's dropdowns offer. Custom entries you type in the key form land here automatically — built-in ones ${I.lock} are part of the app and can't be removed.</p>
     <div class="settings-grid">
       <div class="settings-card">
         <h2>Vendors</h2>
@@ -2398,7 +2501,7 @@ function viewCatalogSection() {
 
       <div class="settings-card">
         <h2>Models</h2>
-        <div class="tag-cloud">${modelTags || '<span class="muted small">No custom models yet — every built-in Yubico, Token2, Titan, Nitrokey, SoloKeys and Feitian model is already in the picker.</span>'}</div>
+        <div class="tag-cloud">${modelTags || '<span class="muted small">No custom models yet.</span>'}</div>
         <form class="tag-add" data-cat-type="model">
           <select name="vendor" title="Vendor">${vendorOpts}</select>
           <input type="text" name="value" placeholder="Model name…" maxlength="60">
@@ -2423,12 +2526,10 @@ function viewCatalogSection() {
           <input type="color" name="value" value="#8b5cf6" title="Pick a color">
           <button class="btn btn-sm" type="submit">${I.plus} Add</button>
         </form>
-        <p class="hint small muted" style="margin-top:12px">Removing an entry never changes keys that already use it — it just leaves the pickers.</p>
       </div>
 
       <div class="settings-card">
         <h2>Device recognition</h2>
-        <p class="desc">How “Detect my key” knows what you plugged in: Keeyo keeps a list of device fingerprints and updates it automatically from the official FIDO directory. You never need to touch this — it's shown here so you can see it's working.</p>
         <div id="registry-status" class="muted small">Checking…</div>
         ${state.me.isAdmin ? `<div style="margin-top:12px"><button class="btn btn-sm" id="registry-refresh">${I.scan} Refresh now</button></div>` : ''}
       </div>
@@ -2577,7 +2678,7 @@ function keyModal(existing = null) {
       <div class="field" id="pair-field">
         <label>Secret note <span class="muted">(requires pairing)</span></label>
         <button type="button" class="btn btn-sm" id="pair-btn">${I.scan} Pair with this physical key</button>
-        <div class="hint">Pairing lets Keeyo store a note revealed only by tapping this exact key.</div>
+        
       </div>
       <div class="field" id="secret-field" style="display:none">${secretInputHTML}</div>`;
   } else {
@@ -2588,7 +2689,7 @@ function keyModal(existing = null) {
       <div class="field" id="pair-field">
         <label>Encryption upgrade</label>
         <button type="button" class="btn btn-sm" id="pair-btn">${I.scan} Re-pair to enable encrypted notes</button>
-        <div class="hint">This pairing predates PRF support — one re-scan upgrades secret notes to end-to-end encryption.</div>
+        
       </div>` : ''}
       <div class="field" id="secret-field" style="${existing ? '' : 'display:none'}">${secretInputHTML}</div>`;
   }
@@ -2604,17 +2705,17 @@ function keyModal(existing = null) {
       <div id="detected-banner"></div>
       <div class="field"><label>Name</label>
         <input type="text" name="name" required placeholder="e.g. Daily driver, Desk drawer backup" value="${esc(k.name)}">
-        <div class="hint">Give it a name you'll recognize — where it lives or what it's for.</div></div>
+        </div>
       <div class="field-row">
         <div class="field"><label>Vendor</label><select name="vendorSelect">${vendorOptions}</select></div>
         <div class="field"><label>Model</label><select name="modelSelect"></select></div>
       </div>
       <div class="field" id="custom-vendor-field" style="display:none"><label>Custom vendor name</label>
         <input type="text" name="vendorCustom" placeholder="e.g. HyperFIDO" maxlength="60">
-        <div class="hint">Saved to your vendor list for next time (manage it in Settings → Catalog).</div></div>
+        </div>
       <div class="field" id="custom-model-field" style="display:none"><label>Custom model name</label>
         <input type="text" name="modelCustom" value="${isCustomModel ? esc(k.model) : ''}" placeholder="Model name" maxlength="60">
-        <div class="hint">Saved to your model list for next time.</div></div>
+        </div>
       <div class="field-row">
         <div class="field"><label>Form factor</label><select name="ffSelect">${ffOptions}</select></div>
         <div class="field"><label>Serial number <span class="muted">(optional)</span></label>
@@ -2622,13 +2723,13 @@ function keyModal(existing = null) {
       </div>
       <div class="field" id="custom-ff-field" style="display:none"><label>Custom form factor</label>
         <input type="text" name="ffCustom" placeholder="e.g. Keychain fob" maxlength="60">
-        <div class="hint">Saved to your form factor list for next time.</div></div>
+        </div>
       <div class="field"><label>Color tag</label>
         <div class="swatches">
           ${swatches.map((c) => `<button type="button" class="swatch ${c === k.color ? 'selected' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`).join('')}
           <input type="color" class="swatch-custom" name="colorCustom" value="${esc(k.color)}" title="Custom color">
         </div>
-        <div class="hint">Tip: match it to a real sticker or keychain tag on the physical key.</div></div>
+        </div>
       <div class="field-row">
         <div class="field"><label>Status</label><select name="status">${statusOptions}</select></div>
         <div class="field"><label>Purchased <span class="muted">(optional)</span></label>
@@ -2641,7 +2742,7 @@ function keyModal(existing = null) {
           <button type="button" class="btn btn-sm btn-ghost" id="photo-clear" style="display:none">Remove</button>
           <input type="file" id="photo-file" accept="image/*" style="display:none">
         </div>
-        <div class="hint">Shown on the key's card instead of the drawing.</div></div>
+        </div>
       <div class="field"><label>Notes <span class="muted">(optional)</span></label>
         <textarea name="notes" placeholder="PIN hint location, keychain it lives on…">${esc(k.notes)}</textarea></div>
       ${secretField}
@@ -3035,7 +3136,7 @@ function registrationModal({ key, reg = null, presetKind = null, presetService =
         ? `<div class="field"><label>Service</label>
              <div class="selected-service">${serviceIconHTML(svcFixed || { name: '?' }, 'sm')}<span class="name">${esc(svcFixed ? svcFixed.name : '')}</span></div></div>
            <div class="field"><label>On key</label><select name="moveKey">${keyOptions}</select>
-             <div class="hint">Change this to move the registration to another key.</div></div>`
+             </div>`
         : `<div class="field"><label>Service</label>
              <div class="combo" id="svc-combo">
                <input type="text" name="svcSearch" placeholder="Search or type a new service…" autocomplete="off">
@@ -3066,7 +3167,7 @@ function registrationModal({ key, reg = null, presetKind = null, presetService =
       <div class="field" id="totp-app-field" style="display:none"><label>Read with app</label>
         <input type="text" name="totpApp" list="totp-apps" placeholder="Yubico Authenticator" value="${esc(reg ? reg.totpApp : '')}">
         <datalist id="totp-apps">${totpApps}</datalist>
-        <div class="hint">The app you use to read this code from the key.</div></div>
+        </div>
       <div class="field"><label>Notes <span class="muted">(optional)</span></label>
         <textarea name="notes">${esc(reg ? reg.notes : '')}</textarea></div>
       ${editing ? '' : '<label class="check-line"><input type="checkbox" name="addAnother"> Add another to this key after saving</label>'}`,

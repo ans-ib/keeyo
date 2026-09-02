@@ -54,11 +54,11 @@ function clearSessionCookie(res) {
 
 // ---------- sessions ----------
 
-function createSession(req, res, userId) {
+function createSession(req, res, userId, via = 'password') {
   const token = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
-  db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  db.prepare('INSERT INTO sessions (token, user_id, expires_at, via) VALUES (?, ?, ?, ?)').run(token, userId, expiresAt, via);
   setSessionCookie(req, res, token);
 }
 

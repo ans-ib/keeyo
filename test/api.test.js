@@ -510,6 +510,144 @@ test('recovery codes are wiped when the last second factor is removed', async ()
   assert.equal(refused.status, 400, 'codes cannot exist without a second factor');
 });
 
+test('SSO (OIDC): code flow with PKCE signs in, auto-creates the user, refuses replayed state', async () => {
+  // Minimal mock identity provider: discovery + token endpoint.
+  let idpBase = '';
+  let issuedNonce = '';
+  let idpProfile = { preferred_username: 'SSO.User', email: 'sso@example.com' };
+  const idp = require('node:http').createServer((rq, rs) => {
+    rs.setHeader('Content-Type', 'application/json');
+    if (rq.url.startsWith('/.well-known/openid-configuration')) {
+      rs.end(JSON.stringify({
+        issuer: idpBase,
+        authorization_endpoint: `${idpBase}/authorize`,
+        token_endpoint: `${idpBase}/token`,
+      }));
+    } else if (rq.url.startsWith('/token')) {
+      const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+      const header = enc({ alg: 'RS256', typ: 'JWT' });
+      const payload = enc({
+        iss: idpBase,
+        aud: 'keeyo-test',
+        exp: Math.floor(Date.now() / 1000) + 600,
+        nonce: issuedNonce,
+        sub: 'abc123',
+        ...idpProfile,
+      });
+      rs.end(JSON.stringify({ id_token: `${header}.${payload}.fakesig` }));
+    } else {
+      rs.statusCode = 404;
+      rs.end('{}');
+    }
+  });
+  await new Promise((r) => idp.listen(0, HOSTNAME, r));
+  idpBase = `http://${HOSTNAME}:${idp.address().port}`;
+
+  process.env.KEEYO_OIDC_ISSUER = idpBase;
+  process.env.KEEYO_OIDC_CLIENT_ID = 'keeyo-test';
+  process.env.KEEYO_OIDC_CLIENT_SECRET = 'shhh';
+  process.env.KEEYO_OIDC_NAME = 'Authentik';
+
+  try {
+    const st = await call('/status', { noCookie: true });
+    assert.equal(st.data.sso.enabled, true, 'status must advertise SSO when configured');
+    assert.equal(st.data.sso.name, 'Authentik');
+
+    const r1 = await fetch(base + '/api/oidc/login', { redirect: 'manual' });
+    assert.equal(r1.status, 302);
+    const loc = new URL(r1.headers.get('location'));
+    assert.equal(`${loc.origin}${loc.pathname}`, `${idpBase}/authorize`);
+    assert.equal(loc.searchParams.get('code_challenge_method'), 'S256');
+    assert.ok(loc.searchParams.get('code_challenge'), 'PKCE challenge present');
+    issuedNonce = loc.searchParams.get('nonce');
+    const stateParam = loc.searchParams.get('state');
+
+    const r2 = await fetch(base + `/api/oidc/callback?state=${stateParam}&code=fake`, { redirect: 'manual' });
+    assert.equal(r2.status, 302);
+    assert.equal(r2.headers.get('location'), '/', 'successful SSO redirects home');
+    const ssoCookie = (r2.headers.get('set-cookie') || '').split(';')[0];
+    assert.ok(ssoCookie.startsWith('keeyo_session='), 'session cookie issued');
+    const me = await (await fetch(base + '/api/me', { headers: { cookie: ssoCookie } })).json();
+    assert.equal(me.username, 'sso.user', 'user auto-created from preferred_username');
+    assert.equal(me.isAdmin, false, 'SSO users are never auto-admins');
+
+    // SSO-created accounts have no usable password.
+    const pw = await call('/login', { body: { username: 'sso.user', password: 'sso' }, noCookie: true });
+    assert.equal(pw.status, 401);
+
+    // A replayed state must be refused.
+    const r3 = await fetch(base + `/api/oidc/callback?state=${stateParam}&code=fake`, { redirect: 'manual' });
+    assert.match(decodeURIComponent(r3.headers.get('location') || ''), /expired/);
+    // While env-configured, the admin panel is locked.
+    const locked = await call('/admin/sso', { method: 'PUT', body: { enabled: true } });
+    assert.equal(locked.status, 400, 'env vars lock the admin panel');
+  } finally {
+    delete process.env.KEEYO_OIDC_ISSUER;
+    delete process.env.KEEYO_OIDC_CLIENT_ID;
+    delete process.env.KEEYO_OIDC_CLIENT_SECRET;
+    delete process.env.KEEYO_OIDC_NAME;
+  }
+
+  try {
+    const off = await call('/status', { noCookie: true });
+    assert.equal(off.data.sso.enabled, false, 'SSO disappears when unconfigured');
+
+    // Admin panel config (database-backed), with the full option set.
+    const put = await call('/admin/sso', {
+      method: 'PUT',
+      body: {
+        enabled: true, issuer: idpBase, clientId: 'keeyo-test', clientSecret: 's3cret',
+        name: 'Authentik', autoCreate: true, requireVerified: true, disablePassword: true,
+        logoutUrl: `${idpBase}/goodbye`, scopes: 'openid profile email', usernameClaim: 'preferred_username',
+      },
+    });
+    assert.equal(put.status, 200);
+    const on = await call('/status', { noCookie: true });
+    assert.equal(on.data.sso.enabled, true, 'DB-configured SSO advertises on the login screen');
+    assert.equal(on.data.sso.name, 'Authentik');
+    assert.equal(on.data.sso.passwordDisabled, true);
+    assert.equal((await call('/admin/sso')).data.hasSecret, true);
+
+    // Password login: blocked for non-admins, admin hatch stays open.
+    await call('/users', { body: { username: 'plainuser', password: 'plainpass123', isAdmin: false } });
+    const blocked = await call('/login', { body: { username: 'plainuser', password: 'plainpass123' }, noCookie: true });
+    assert.equal(blocked.status, 403);
+    assert.match(blocked.data.error, /disabled/);
+    const adminOk = await call('/login', { body: { username: 'admin', password: 'testpass456' }, noCookie: true });
+    assert.equal(adminOk.status, 200, 'admins keep password sign-in as the lockout hatch');
+
+    // Unverified email is refused for new accounts; verified passes; SSO logout chains to the provider.
+    idpProfile = { preferred_username: 'Fresh.One', email: 'f@example.com', email_verified: false };
+    let a = await fetch(base + '/api/oidc/login', { redirect: 'manual' });
+    let loc = new URL(a.headers.get('location'));
+    issuedNonce = loc.searchParams.get('nonce');
+    let cb = await fetch(base + `/api/oidc/callback?state=${loc.searchParams.get('state')}&code=x`, { redirect: 'manual' });
+    assert.match(decodeURIComponent(cb.headers.get('location') || ''), /not verified/);
+
+    idpProfile.email_verified = true;
+    a = await fetch(base + '/api/oidc/login', { redirect: 'manual' });
+    loc = new URL(a.headers.get('location'));
+    issuedNonce = loc.searchParams.get('nonce');
+    cb = await fetch(base + `/api/oidc/callback?state=${loc.searchParams.get('state')}&code=x`, { redirect: 'manual' });
+    assert.equal(cb.headers.get('location'), '/');
+    const freshCookie = (cb.headers.get('set-cookie') || '').split(';')[0];
+    const out = await fetch(base + '/api/logout', {
+      method: 'POST',
+      headers: { cookie: freshCookie, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal((await out.json()).redirect, `${idpBase}/goodbye`, 'SSO sessions chain into the provider logout');
+
+    // Clearing forgets everything, secret included.
+    await call('/admin/sso', { method: 'PUT', body: { clear: true } });
+    const off2 = await call('/status', { noCookie: true });
+    assert.equal(off2.data.sso.enabled, false);
+    assert.equal((await call('/admin/sso')).data.hasSecret, false, 'clearing must forget the secret');
+  } finally {
+    await new Promise((r) => idp.close(r));
+  }
+});
+
 test('rate limiter cannot be bypassed by spoofing X-Forwarded-For', async () => {
   let status = 0;
   for (let i = 0; i < 11; i++) {

@@ -1,16 +1,12 @@
 'use strict';
 
-// Minimal RFC 6238 TOTP (HMAC-SHA1, 30-second steps, 6 digits) on node:crypto,
-// zero dependencies. This backs Keeyo's own sign-in second factor only — the
-// per-service TOTP entries users track in their inventory are names, never
-// seeds, and never touch this module.
 
 const crypto = require('node:crypto');
 
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const STEP_SECONDS = 30;
 const DIGITS = 6;
-const WINDOW = 1; // accept the previous/next step to absorb clock drift
+const WINDOW = 1; 
 
 function b32encode(buf) {
   let bits = 0;
@@ -58,10 +54,6 @@ function hotp(secretBuf, counter) {
   return String(code % 10 ** DIGITS).padStart(DIGITS, '0');
 }
 
-// Returns the matching time-step counter, or null if the code is wrong.
-// Callers must persist the returned counter and pass it back as lastCounter —
-// counters at or below it are refused, which makes every code single-use
-// (RFC 6238 section 5.2).
 function verifyCode(secretB32, code, lastCounter = 0) {
   const cleaned = String(code == null ? '' : code).replace(/\s+/g, '');
   if (!new RegExp(`^\\d{${DIGITS}}$`).test(cleaned)) return null;
