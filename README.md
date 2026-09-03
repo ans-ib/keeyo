@@ -35,7 +35,7 @@ Full documentation is available at **[ans-ib.github.io/keeyo](https://ans-ib.git
 - [Security model](https://ans-ib.github.io/keeyo/security.html) — what's protected, how, and the honest limits
 
 <div align="center">
-<img src="docs/assets/preview.svg" width="85%" alt="The Keeyo key register — asset-tag cards for each physical key">
+<img src="docs/assets/screenshot-keys.png" width="85%" alt="The Keeyo key register">
 </div>
 
 ## Quick start
@@ -67,7 +67,7 @@ volumes:
 
 ## Key features
 
-- **Visual inventory** — a grid of asset-tag cards: color strips, tag numbers, status stamps (active / backup / lost / retired), schematic key artwork or your own photos.
+- **Visual inventory** — a grid of asset-tag cards: color dots, tag numbers, status chips (active / backup / lost / retired), schematic key artwork or your own photos.
 - **Scan to detect** — plug a key in, tap it, and Keeyo reads its fingerprint via WebAuthn and fills in vendor/model from the live FIDO registry (auto-updating, so new keys are recognized without app updates).
 - **"Which key is this?"** — found a random key in a drawer? Identify it with one tap. Several keys plugged in at once is fine: the one you touch answers.
 - **Track what goes where** — every passkey, 2FA registration and TOTP per key, plus the reverse lookup per service.

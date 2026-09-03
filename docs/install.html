@@ -89,7 +89,7 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
   </table>
 
   <h2>Single sign-on (Authentik, Authelia, Keycloak, …)</h2>
-  <p>Keeyo speaks standard <b>OpenID Connect</b> (authorization code flow with PKCE), so any self-hosted identity provider works. The easiest way is the admin panel: <b>Settings → Security → Single sign-on</b> covers everything — provider name, client credentials, issuer (endpoints are auto-discovered; manual Auth/Token URL overrides exist for providers without discovery), scopes, the identifier claim, a logout URL, plus toggles for auto-creating users, requiring a verified email, and disabling password login (admins always keep password sign-in as the lockout hatch). Environment variables do the same headlessly and, when set, lock the panel. For Authentik:</p>
+  <p>Keeyo speaks standard <b>OpenID Connect</b> (authorization code flow with PKCE), so any self-hosted identity provider works. The easiest way is the admin panel: <b>Settings → Single sign-on</b> covers everything — provider name, client credentials, issuer (endpoints are auto-discovered; manual Auth/Token URL overrides exist for providers without discovery), scopes, the identifier claim, a logout URL, plus toggles for auto-creating users, requiring a verified email, and disabling password login (admins always keep password sign-in as the lockout hatch). Environment variables do the same headlessly and, when set, lock the panel. For Authentik:</p>
   <ol>
     <li>Create an <b>OAuth2/OpenID provider</b> (confidential client, authorization code flow) with redirect URI <code>https://keys.example.com/api/oidc/callback</code>, and an application using it.</li>
     <li>Set the environment variables: <code>KEEYO_OIDC_ISSUER</code> to the provider's OpenID issuer URL (e.g. <code>https://auth.example.com/application/o/keeyo/</code>), plus <code>KEEYO_OIDC_CLIENT_ID</code>, <code>KEEYO_OIDC_CLIENT_SECRET</code>, and <code>KEEYO_OIDC_NAME=Authentik</code>.</li>
@@ -98,7 +98,7 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
   <p>SSO users are matched by username (<code>preferred_username</code>, falling back to the email's local part) and created automatically on first sign-in as regular users — admins are only ever appointed locally. SSO accounts have no Keeyo password, and Keeyo's own second factor is skipped for them: your identity provider owns their authentication, including MFA. Password sign-in keeps working alongside SSO for local accounts.</p>
 
   <h2>Email &amp; password reset</h2>
-  <p>Configure SMTP in <b>Settings → Security → Email (SMTP)</b> (or via the <code>KEEYO_SMTP_*</code> variables, which lock the panel) and a <i>Forgot password?</i> link appears on the sign-in page. Users set their address under Settings → Account; reset links are single-use, expire after 45 minutes, and revoke every session of the account when used. Accounts created by SSO have no password and are excluded. The SMTP client is built in — no relay container needed — and speaks TLS, STARTTLS or plain.</p>
+  <p>Configure SMTP in <b>Settings → Email</b> (or via the <code>KEEYO_SMTP_*</code> variables, which lock the panel) and a <i>Forgot password?</i> link appears on the sign-in page. Users set their address under Settings → Account; reset links are single-use, expire after 45 minutes, and revoke every session of the account when used. Accounts created by SSO have no password and are excluded. The SMTP client is built in — no relay container needed — and speaks TLS, STARTTLS or plain.</p>
 
   <h2>Reverse proxy &amp; HTTPS</h2>
   <p>Keeyo speaks plain HTTP; put your reverse proxy in front for TLS and set <code>TRUST_PROXY=1</code>. Caddy example:</p>
@@ -121,7 +121,7 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
 </main>
 
 <footer class="footer">
-  <span>KEEYO · EQUIPMENT REGISTER</span>
+  <span>Keeyo</span>
   <a href="https://keeyo.org">keeyo.org</a>
   <a href="https://github.com/ans-ib/keeyo">GitHub</a>
   <a href="https://github.com/ans-ib/keeyo/discussions">Support</a>
