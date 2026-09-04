@@ -90,6 +90,28 @@
   </ul>
   <p>Resetting a password with <code>scripts/reset-password.js</code> revokes every token on that account.</p>
 
+  <h3>Using a token</h3>
+  <p>Every request is the same as the web app's own API — just add the header. Reading the whole register:</p>
+  <pre><code>curl -H "Authorization: Bearer keeyo_xxxxxxxxxxxx" \
+  https://keys.example.com/api/data</code></pre>
+  <p>That returns one JSON object with your <code>keys</code>, <code>services</code> and <code>registrations</code>. A nightly off-site backup is one cron line (a <i>read-only</i> token is enough):</p>
+  <pre><code>0 3 * * * curl -sf -H "Authorization: Bearer $KEEYO_TOKEN" \
+  https://keys.example.com/api/export > /backups/keeyo-$(date +\%F).json</code></pre>
+  <p>With a <i>read &amp; write</i> token you can add records. Register a key, then log a passkey on it — services are created inline if the name is new:</p>
+  <pre><code>curl -H "Authorization: Bearer $KEEYO_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "Drawer spare", "vendor": "Yubico", "model": "YubiKey 5 NFC", "formFactor": "usb-a", "status": "backup"}' \
+  https://keys.example.com/api/keys
+# → {"id": 7, ...}
+
+curl -H "Authorization: Bearer $KEEYO_TOKEN" -H "Content-Type: application/json" \
+  -d '{"keyId": 7, "kind": "passkey", "service": {"name": "GitHub", "url": "github.com"}}' \
+  https://keys.example.com/api/registrations</code></pre>
+  <p>Same thing from PowerShell:</p>
+  <pre><code>$headers = @{ Authorization = "Bearer $env:KEEYO_TOKEN" }
+Invoke-RestMethod -Uri "https://keys.example.com/api/data" -Headers $headers</code></pre>
+  <p>Useful endpoints: <code>GET /api/data</code> (everything), <code>GET /api/export</code> (backup JSON), <code>GET /api/keys/ID/events</code> (a key's logbook), <code>POST /api/keys</code>, <code>POST /api/services</code>, <code>POST /api/registrations</code> (with <code>serviceId</code> or an inline <code>service</code>), <code>POST /api/keys/ID/verify</code> (record a health check-in — handy after a scripted test), and <code>PUT</code>/<code>DELETE</code> on any of those by id. Registration <code>kind</code> is <code>passkey</code>, <code>second-factor</code> or <code>totp</code>.</p>
+  <p>What the errors mean: <code>401</code> — the token is wrong, expired or revoked; <code>403 This access token is read-only</code> — a write with a read-only token; <code>403 Not available to access tokens</code> — that route needs a real sign-in (account, security and admin settings always do).</p>
+
   <h2>Keyboard shortcuts</h2>
   <table>
     <thead><tr><th>Key</th><th>Action</th></tr></thead>
