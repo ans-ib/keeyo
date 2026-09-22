@@ -71,7 +71,8 @@ npm start          # http://localhost:5390, data in ./data</code></pre>
       <tr><td><code>KEEYO_DISABLE_MFA</code></td><td>unset</td><td>Set <code>1</code> to skip every sign-in second factor — security keys and authenticator codes (lockout recovery).</td></tr>
       <tr><td><code>KEEYO_OIDC_ISSUER</code></td><td>unset</td><td>OIDC issuer URL — setting this (plus client id/secret) enables single sign-on. See below.</td></tr>
       <tr><td><code>KEEYO_OIDC_CLIENT_ID</code></td><td>unset</td><td>OIDC client id.</td></tr>
-      <tr><td><code>KEEYO_OIDC_CLIENT_SECRET</code></td><td>unset</td><td>OIDC client secret.</td></tr>
+      <tr><td><code>KEEYO_OIDC_CLIENT_SECRET</code></td><td>unset</td><td>OIDC client secret. Leave empty for public clients (PKCE-only) — Cosmos's built-in OpenID works this way.</td></tr>
+      <tr><td><code>KEEYO_OIDC_ADMIN_BOOTSTRAP</code></td><td>unset</td><td>Set <code>1</code> on a fresh instance to skip the setup screen: the first person to sign in through SSO becomes the admin, and password setup is refused. Closes the first-visit race behind platforms like Cosmos.</td></tr>
       <tr><td><code>KEEYO_OIDC_NAME</code></td><td><code>SSO</code></td><td>Label on the sign-in button (e.g. <code>Authentik</code>).</td></tr>
       <tr><td><code>KEEYO_OIDC_AUTO_CREATE</code></td><td><code>1</code></td><td>Set <code>0</code> to refuse SSO sign-ins for usernames that don't already exist in Keeyo.</td></tr>
       <tr><td><code>KEEYO_OIDC_SCOPES</code></td><td><code>openid profile email</code></td><td>OIDC scopes to request.</td></tr>

@@ -32,12 +32,11 @@ function current() {
   if (setting('oidc_enabled') !== '1') return null;
   const issuer = setting('oidc_issuer').replace(/\/+$/, '');
   const clientId = setting('oidc_client_id');
-  const clientSecret = setting('oidc_client_secret');
-  if (!issuer || !clientId || !clientSecret) return null;
+  if (!issuer || !clientId) return null;
   return {
     issuer,
     clientId,
-    clientSecret,
+    clientSecret: setting('oidc_client_secret'),
     name: setting('oidc_name') || DEFAULT_NAME,
     autoCreate: setting('oidc_auto_create') !== '0',
     scopes: setting('oidc_scopes') || DEFAULT_SCOPES,
@@ -47,6 +46,7 @@ function current() {
     logoutUrl: setting('oidc_logout_url'),
     requireVerified: setting('oidc_require_verified') === '1',
     disablePassword: setting('oidc_disable_password') === '1',
+    adminBootstrap: false,
     envLocked: false,
   };
 }
@@ -99,7 +99,6 @@ function update(body) {
   if (enabled) {
     if (!issuer) throw new ApiError(400, 'Issuer URL is required');
     if (!clientId) throw new ApiError(400, 'Client ID is required');
-    if (!clientSecret && !setting('oidc_client_secret')) throw new ApiError(400, 'Client secret is required');
     if ((authUrl && !tokenUrl) || (!authUrl && tokenUrl)) {
       throw new ApiError(400, 'Set both Auth URL and Token URL to bypass discovery, or neither');
     }
@@ -129,6 +128,9 @@ function resolveUser(claims, cfg) {
   const username = oidc.usernameFrom(claims, cfg);
   const existing = users.findByUsername(username);
   if (existing) return existing.id;
+  if (cfg.adminBootstrap && users.count() === 0) {
+    return users.create({ username, passwordHash: users.SSO_PASSWORD, isAdmin: true });
+  }
   if (!cfg.autoCreate) throw new Error(`No Keeyo account named "${username}" — ask your admin to create it`);
   if (cfg.requireVerified && claims.email_verified !== true) {
     throw new Error('Your email address is not verified at the identity provider');

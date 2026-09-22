@@ -35,12 +35,11 @@ const config = {
 function oidcFromEnv() {
   const issuer = (process.env.KEEYO_OIDC_ISSUER || '').replace(/\/+$/, '');
   const clientId = process.env.KEEYO_OIDC_CLIENT_ID || '';
-  const clientSecret = process.env.KEEYO_OIDC_CLIENT_SECRET || '';
-  if (!issuer || !clientId || !clientSecret) return null;
+  if (!issuer || !clientId) return null;
   return {
     issuer,
     clientId,
-    clientSecret,
+    clientSecret: process.env.KEEYO_OIDC_CLIENT_SECRET || '',
     name: process.env.KEEYO_OIDC_NAME || 'SSO',
     autoCreate: process.env.KEEYO_OIDC_AUTO_CREATE !== '0',
     scopes: process.env.KEEYO_OIDC_SCOPES || 'openid profile email',
@@ -50,6 +49,7 @@ function oidcFromEnv() {
     logoutUrl: process.env.KEEYO_OIDC_LOGOUT_URL || '',
     requireVerified: process.env.KEEYO_OIDC_REQUIRE_VERIFIED === '1',
     disablePassword: process.env.KEEYO_OIDC_DISABLE_PASSWORD === '1',
+    adminBootstrap: process.env.KEEYO_OIDC_ADMIN_BOOTSTRAP === '1',
     envLocked: true,
   };
 }

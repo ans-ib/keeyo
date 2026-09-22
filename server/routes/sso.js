@@ -18,7 +18,7 @@ function redirectWithError(res, message) {
 router.get('/oidc/login', asyncRoute(async (req, res) => {
   const cfg = sso.current();
   if (!cfg) throw new ApiError(404, 'SSO is not configured');
-  if (users.count() === 0) {
+  if (users.count() === 0 && !cfg.adminBootstrap) {
     redirectWithError(res, 'Complete the first-run setup before signing in with SSO');
     return;
   }

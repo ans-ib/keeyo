@@ -1,6 +1,6 @@
 {
   "name": "keeyo",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Self-hosted inventory for your hardware security keys — track which key holds which passkey, 2FA registration and TOTP.",
   "license": "AGPL-3.0-only",
   "private": true,

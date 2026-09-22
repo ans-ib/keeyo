@@ -13,7 +13,7 @@ router.get('/health', (req, res) => res.json({ ok: true }));
 router.get('/status', (req, res) => {
   const cfg = sso.current();
   res.json({
-    needsSetup: users.count() === 0,
+    needsSetup: users.count() === 0 && !(cfg && cfg.adminBootstrap),
     authenticated: !!sessions.currentUser(req),
     sso: cfg ? { enabled: true, name: cfg.name, passwordDisabled: !!cfg.disablePassword } : { enabled: false },
     resetAvailable: reset.available(),

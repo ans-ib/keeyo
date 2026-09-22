@@ -72,9 +72,9 @@ async function exchangeCode(disco, cfg, flow, code) {
     code,
     redirect_uri: flow.redirectUri,
     client_id: cfg.clientId,
-    client_secret: cfg.clientSecret,
     code_verifier: flow.verifier,
   });
+  if (cfg.clientSecret) body.set('client_secret', cfg.clientSecret);
   const res = await fetch(disco.token_endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

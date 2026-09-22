@@ -28,6 +28,10 @@ function finishSignIn(req, res, ip, userId, extra = {}) {
 }
 
 router.post('/setup', (req, res) => {
+  const bootstrapCfg = sso.current();
+  if (bootstrapCfg && bootstrapCfg.adminBootstrap && users.count() === 0) {
+    throw new ApiError(403, `The first account is created by signing in with "${bootstrapCfg.name}"`);
+  }
   if (users.count() > 0) throw new ApiError(403, 'Setup has already been completed');
   const { username, password } = users.parseCredentials(req.body || {});
   const id = users.create({ username, passwordHash: hashPassword(password), isAdmin: true });
